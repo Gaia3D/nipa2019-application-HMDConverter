@@ -23,6 +23,8 @@
 *_old.*
 *_new.*
 UpgradeLog.htm
+*.iobj
+*.ipdb
 
 # Directories
 ipch
@@ -30,7 +32,6 @@ Debug
 Release
 data
 x64external
-bin
 dll
 lib
 
