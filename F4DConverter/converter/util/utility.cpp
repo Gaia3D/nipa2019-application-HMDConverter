@@ -488,6 +488,7 @@ namespace gaia3d
 		size_t prevIndex, nextIndex;
 		gaia3d::Point3D prevVector, nextVector;
 		double lfNormal = 0.0;
+		double tolerance = 1E-6;
 		for (size_t i = 0; i < count; i++)
 		{
 			prevIndex = (i == 0) ? count - 1 : i - 1;
@@ -501,13 +502,13 @@ namespace gaia3d
 
 			crossProd = prevVector.x*nextVector.y - prevVector.y*nextVector.x;
 			dotProd = prevVector.x * nextVector.x + prevVector.y * nextVector.y;
-			if (crossProd > 0.0)
+			if (crossProd > tolerance)
 			{
 				crossProd = 1.0;
 			}
-			else if (crossProd < 0.0)
+			else if (crossProd < -tolerance)
 			{
-				crossProd = -1;
+				crossProd = -1.0;
 				concavePointIndicesOnAllPoints.push_back(indices[i]);
 				concavePointIndicesOnThisPolygon.push_back(i);
 			}
@@ -691,32 +692,34 @@ namespace gaia3d
 		}
 	}
 
-	void GeometryUtility::tessellate(double* xs, double* ys, double* zs, size_t count, std::vector<size_t>& indices)
+	void GeometryUtility::tessellate(double* xs, double* ys, double* zs, size_t vertexCount, std::vector<size_t>& polygonIndices, std::vector<size_t>& indices)
 	{
 		// 0. basic validation
+		size_t count = polygonIndices.size();
 		if (count < 3)
 			return;
 
 		if (count == 3)
 		{
-			indices.push_back(0);
-			indices.push_back(1);
-			indices.push_back(2);
+			indices.push_back(polygonIndices[0]);
+			indices.push_back(polygonIndices[1]);
+			indices.push_back(polygonIndices[2]);
 			return;
 		}
 
 		// 1. calculate normal of this polygon
 		gaia3d::Point3D normal, crossProd, prevVector, nextVector;
 		double dotProd, angle;
-		size_t prevIndex, nextIndex;
+		size_t prevIndex, curIndex, nextIndex;
 		normal.set(0.0, 0.0, 0.0);
 		for (size_t i = 0; i < count; i++)
 		{
-			prevIndex = (i == 0) ? count - 1 : i - 1;
-			nextIndex = (i == count - 1) ? 0 : i + 1;
+			prevIndex = (i == 0) ? polygonIndices[count - 1] : polygonIndices[i - 1];
+			curIndex = polygonIndices[i];
+			nextIndex = (i == count - 1) ? polygonIndices[0] : polygonIndices[i + 1];
 
-			prevVector.set(xs[i] - xs[prevIndex], ys[i] - ys[prevIndex], zs[i] - zs[prevIndex]);
-			nextVector.set(xs[nextIndex] - xs[i], ys[nextIndex] - ys[i], zs[nextIndex] - zs[i]);
+			prevVector.set(xs[curIndex] - xs[prevIndex], ys[curIndex] - ys[prevIndex], zs[curIndex] - zs[prevIndex]);
+			nextVector.set(xs[nextIndex] - xs[curIndex], ys[nextIndex] - ys[curIndex], zs[nextIndex] - zs[curIndex]);
 
 			prevVector.normalize();
 			nextVector.normalize();
@@ -738,10 +741,10 @@ namespace gaia3d
 		double nz = abs(normal.z);
 
 		projectionType = (nz > nx) ? ((nz > ny) ? 0 : 2) : ((nx > ny) ? 1 : 2);
-		double* pxs = new double[count];
-		memset(pxs, 0x00, sizeof(double)*count);
-		double* pys = new double[count];
-		memset(pys, 0x00, sizeof(double)*count);
+		double* pxs = new double[vertexCount];
+		memset(pxs, 0x00, sizeof(double)*vertexCount);
+		double* pys = new double[vertexCount];
+		memset(pys, 0x00, sizeof(double)*vertexCount);
 
 		switch (projectionType)
 		{
@@ -749,7 +752,7 @@ namespace gaia3d
 		{
 			if (normal.z > 0)
 			{
-				for (size_t i = 0; i < count; i++)
+				for (size_t i = 0; i < vertexCount; i++)
 				{
 					pxs[i] = xs[i];
 					pys[i] = ys[i];
@@ -757,7 +760,7 @@ namespace gaia3d
 			}
 			else
 			{
-				for (size_t i = 0; i < count; i++)
+				for (size_t i = 0; i < vertexCount; i++)
 				{
 					pxs[i] = xs[i];
 					pys[i] = -ys[i];
@@ -769,7 +772,7 @@ namespace gaia3d
 		{
 			if (normal.x > 0)
 			{
-				for (size_t i = 0; i < count; i++)
+				for (size_t i = 0; i < vertexCount; i++)
 				{
 					pxs[i] = ys[i];
 					pys[i] = zs[i];
@@ -777,7 +780,7 @@ namespace gaia3d
 			}
 			else
 			{
-				for (size_t i = 0; i < count; i++)
+				for (size_t i = 0; i < vertexCount; i++)
 				{
 					pxs[i] = -ys[i];
 					pys[i] = zs[i];
@@ -789,7 +792,7 @@ namespace gaia3d
 		{
 			if (normal.y > 0)
 			{
-				for (size_t i = 0; i < count; i++)
+				for (size_t i = 0; i < vertexCount; i++)
 				{
 					pxs[i] = -xs[i];
 					pys[i] = zs[i];
@@ -797,7 +800,7 @@ namespace gaia3d
 			}
 			else
 			{
-				for (size_t i = 0; i < count; i++)
+				for (size_t i = 0; i < vertexCount; i++)
 				{
 					pxs[i] = xs[i];
 					pys[i] = zs[i];
@@ -813,7 +816,7 @@ namespace gaia3d
 		int projectedPolygonNormal;
 		std::vector<size_t> polygonVertexIndices;
 		for (size_t i = 0; i < count; i++)
-			polygonVertexIndices.push_back(i);
+			polygonVertexIndices.push_back(polygonIndices[i]);
 
 		findConcavePointsAndNormal(pxs, pys, polygonVertexIndices, concavePointIndicesOnAllPoints, concavePointIndicesOnThisPolygon, projectedPolygonNormal);
 
@@ -821,9 +824,9 @@ namespace gaia3d
 		{
 			for (size_t i = 1; i < count - 1; i++)
 			{
-				indices.push_back(0);
-				indices.push_back(i);
-				indices.push_back(i + 1);
+				indices.push_back(polygonIndices[0]);
+				indices.push_back(polygonIndices[i]);
+				indices.push_back(polygonIndices[i + 1]);
 			}
 
 			delete[] pxs;
@@ -849,6 +852,9 @@ namespace gaia3d
 			}
 		}
 	}
+
+	void GeometryUtility::earCut(double** xs, double** ys, double** zs, std::vector<size_t>& eachRingPointCount, std::vector<std::pair<size_t, size_t>>& result)
+	{}
 
 #ifdef _WIN32
 #include <Windows.h>
