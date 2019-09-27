@@ -488,7 +488,7 @@ namespace gaia3d
 		size_t prevIndex, nextIndex;
 		gaia3d::Point3D prevVector, nextVector;
 		double lfNormal = 0.0;
-		double tolerance = 1E-6;
+		double tolerance = 1E-7;
 		for (size_t i = 0; i < count; i++)
 		{
 			prevIndex = (i == 0) ? count - 1 : i - 1;
@@ -497,8 +497,10 @@ namespace gaia3d
 			prevVector.set(pxs[indices[i]] - pxs[indices[prevIndex]], pys[indices[i]] - pys[indices[prevIndex]], 0.0);
 			nextVector.set(pxs[indices[nextIndex]] - pxs[indices[i]], pys[indices[nextIndex]] - pys[indices[i]], 0.0);
 
-			prevVector.normalize();
-			nextVector.normalize();
+			if (!prevVector.normalize())
+				continue;
+			if (!nextVector.normalize())
+				continue;
 
 			crossProd = prevVector.x*nextVector.y - prevVector.y*nextVector.x;
 			dotProd = prevVector.x * nextVector.x + prevVector.y * nextVector.y;
@@ -721,18 +723,24 @@ namespace gaia3d
 			prevVector.set(xs[curIndex] - xs[prevIndex], ys[curIndex] - ys[prevIndex], zs[curIndex] - zs[prevIndex]);
 			nextVector.set(xs[nextIndex] - xs[curIndex], ys[nextIndex] - ys[curIndex], zs[nextIndex] - zs[curIndex]);
 
-			prevVector.normalize();
-			nextVector.normalize();
+			if (!prevVector.normalize())
+				continue;
+
+			if (!nextVector.normalize())
+				continue;
 
 			crossProd = prevVector ^ nextVector;
-			crossProd.normalize();
+			if (!crossProd.normalize())
+				continue;
 
 			dotProd = prevVector.x * nextVector.x + prevVector.y * nextVector.y + prevVector.z * nextVector.z;
 			angle = acos(dotProd);
 
 			normal += (crossProd * angle);
 		}
-		normal.normalize();
+
+		if (!normal.normalize())
+			return;
 
 		// 2. make projected polygon
 		unsigned char projectionType; // 0 : onto x-y plane, 1 : onto y-z plane, 2 : onto z-x plane
@@ -782,8 +790,8 @@ namespace gaia3d
 			{
 				for (size_t i = 0; i < vertexCount; i++)
 				{
-					pxs[i] = -ys[i];
-					pys[i] = zs[i];
+					pxs[i] = ys[i];
+					pys[i] = -zs[i];
 				}
 			}
 		}
@@ -794,16 +802,16 @@ namespace gaia3d
 			{
 				for (size_t i = 0; i < vertexCount; i++)
 				{
-					pxs[i] = -xs[i];
-					pys[i] = zs[i];
+					pxs[i] = zs[i];
+					pys[i] = xs[i];
 				}
 			}
 			else
 			{
 				for (size_t i = 0; i < vertexCount; i++)
 				{
-					pxs[i] = xs[i];
-					pys[i] = zs[i];
+					pxs[i] = zs[i];
+					pys[i] = -xs[i];
 				}
 			}
 		}
@@ -853,8 +861,343 @@ namespace gaia3d
 		}
 	}
 
-	void GeometryUtility::earCut(double** xs, double** ys, double** zs, std::vector<size_t>& eachRingPointCount, std::vector<std::pair<size_t, size_t>>& result)
-	{}
+	void find2DPlaneNormal(double* pxs, double* pys, size_t count, int& normal) {
+
+		double crossProdResult, dotProdResult, angle;
+		size_t prevIndex, nextIndex;
+		Point3D prevVector, nextVector;
+		double lfNormal = 0.0;
+		double tolerance = 1E-7;
+		for (size_t i = 0; i < count; i++)
+		{
+			prevIndex = (i == 0) ? count - 1 : i - 1;
+			nextIndex = (i == count - 1) ? 0 : i + 1;
+
+			prevVector.set(pxs[i] - pxs[prevIndex], pys[i] - pys[prevIndex], 0.0);
+			nextVector.set(pxs[nextIndex] - pxs[i], pys[nextIndex] - pys[i], 0.0);
+
+			if (!prevVector.normalize())
+				continue;
+			if (!nextVector.normalize())
+				continue;
+
+			crossProdResult = prevVector.x * nextVector.y - prevVector.y * nextVector.x;
+			dotProdResult = prevVector.x * nextVector.x + prevVector.y * nextVector.y;
+			if (crossProdResult > tolerance)
+			{
+				crossProdResult = 1.0;
+			}
+			else if (crossProdResult < -tolerance)
+			{
+				crossProdResult = -1.0;
+
+			}
+			else
+				continue;
+
+			if (dotProdResult > 1.0)
+				dotProdResult = 1.0;
+
+			if (dotProdResult < -1.0)
+				dotProdResult = -1.0;
+
+			angle = acos(dotProdResult);
+
+			lfNormal += (crossProdResult * angle);
+		}
+
+		normal = (lfNormal > 0.0) ? 1 : -1;
+	}
+
+	void getSortedRingsIndicesByDistFromPoint(double** px, double** py,
+												std::vector<size_t>eachSizeOfRing,
+												double targetx, double targety,
+												std::vector<std::pair<size_t, size_t>>& indices)
+	{
+	
+	}
+
+	void GeometryUtility::earCut(double** xs, double** ys, double** zs,
+								std::vector<size_t>& eachRingPointCount,
+								std::vector<std::pair<size_t, size_t>>& result)
+	{
+		// 0. basic validation
+		if (eachRingPointCount.size() == 0)
+			return;
+
+		if (eachRingPointCount.size() == 1)
+		{
+			if (eachRingPointCount[0] < 3)
+				return;
+
+			std::pair<size_t, size_t> polygonPointIndex;
+			polygonPointIndex.first = 0;
+			for (size_t i = 0; i < eachRingPointCount[0]; i++)
+			{
+				polygonPointIndex.second = i;
+				result.push_back(polygonPointIndex);
+			}
+
+			return;
+		}
+
+		bool bAllInnerRingsValid = true;
+		for (size_t i = 1; i < eachRingPointCount.size(); i++)
+		{
+			if (eachRingPointCount[i] < 3)
+			{
+				bAllInnerRingsValid = false;
+				break;
+			}
+		}
+		if (!bAllInnerRingsValid)
+			return;
+		
+		// 1. calculate normal of this polygon
+		gaia3d::Point3D normal, crossProd, prevVector, nextVector;
+		double dotProd, angle;
+		size_t prevIndex, nextIndex;
+		normal.set(0.0, 0.0, 0.0);
+		for (size_t i = 0; i < eachRingPointCount[0]; i++)
+		{
+			prevIndex = (i == 0) ? eachRingPointCount[0] - 1 : i - 1;
+			nextIndex = (i == eachRingPointCount[0] - 1) ? 0 : i + 1;
+
+			prevVector.set(xs[0][i] - xs[0][prevIndex], ys[0][i] - ys[0][prevIndex], zs[0][i] - zs[0][prevIndex]);
+			nextVector.set(xs[0][nextIndex] - xs[0][i], ys[0][nextIndex] - ys[0][i], zs[0][nextIndex] - zs[0][i]);
+
+			if (!prevVector.normalize())
+				continue;
+			if (!nextVector.normalize())
+				continue;
+
+			crossProd = prevVector ^ nextVector;
+			if (!crossProd.normalize())
+				continue;
+
+			dotProd = prevVector.x * nextVector.x + prevVector.y * nextVector.y + prevVector.z * nextVector.z;
+			angle = acos(dotProd);
+
+			normal += (crossProd * angle);
+		}
+
+		if (!normal.normalize())
+			return;
+
+		// 2. make projected polygon using the polygon normal
+		unsigned char projectionType; // 0 : onto x-y plane, 1 : onto y-z plane, 2 : onto z-x plane
+		double nx = abs(normal.x);
+		double ny = abs(normal.y);
+		double nz = abs(normal.z);
+
+		projectionType = (nz > nx) ? ((nz > ny) ? 0 : 2) : ((nx > ny) ? 1 : 2);
+		double* pxs = new double[eachRingPointCount[0]];
+		memset(pxs, 0x00, sizeof(double) * eachRingPointCount[0]);
+		double* pys = new double[eachRingPointCount[0]];
+		memset(pys, 0x00, sizeof(double) * eachRingPointCount[0]);
+
+		double** ipxs = new double*[eachRingPointCount.size() - 1];
+		memset(ipxs, 0x00, sizeof(double*)*(eachRingPointCount.size() - 1));
+		double** ipys = new double*[eachRingPointCount.size() - 1];
+		memset(ipys, 0x00, sizeof(double*)*(eachRingPointCount.size() - 1));
+
+		for (size_t i = 1; i < eachRingPointCount.size(); i++) {
+			ipxs[i-1] = new double[eachRingPointCount[i]];
+			ipys[i-1] = new double[eachRingPointCount[i]];
+			memset(ipxs[i-1], 0x00, sizeof(double) * eachRingPointCount[i]);
+			memset(ipys[i-1], 0x00, sizeof(double) * eachRingPointCount[i]);
+		}
+
+		switch (projectionType)
+		{
+		case 0:
+		{
+			if (normal.z > 0)
+			{
+				for (size_t i = 0; i < eachRingPointCount[0]; i++)
+				{
+					pxs[i] = xs[0][i];
+					pys[i] = ys[0][i];
+				}
+
+				for (size_t i = 1; i < eachRingPointCount.size(); i++) {
+					for (size_t j = 0; j < eachRingPointCount[i]; j++) {
+						ipxs[i-1][j] = xs[i][j];
+						ipys[i-1][j] = ys[i][j];
+					}
+				}
+			}
+			else
+			{
+				for (size_t i = 0; i < eachRingPointCount[0]; i++)
+				{
+					pxs[i] = xs[0][i];
+					pys[i] = -ys[0][i];
+				}
+
+				for (size_t i = 1; i < eachRingPointCount.size(); i++) {
+					for (size_t j = 0; j < eachRingPointCount[i]; j++) {
+						ipxs[i-1][j] = xs[i][j];
+						ipys[i-1][j] = -ys[i][j];
+					}
+				}
+			}
+		}
+		break;
+		case 1:
+		{
+			if (normal.x > 0)
+			{
+				for (size_t i = 0; i < eachRingPointCount[0]; i++)
+				{
+					pxs[i] = ys[0][i];
+					pys[i] = zs[0][i];
+				}
+
+				for (size_t i = 1; i < eachRingPointCount.size(); i++) {
+					for (size_t j = 0; j < eachRingPointCount[i]; j++) {
+						ipxs[i-1][j] = ys[i][j];
+						ipys[i-1][j] = zs[i][j];
+					}
+				}
+			}
+			else
+			{
+				for (size_t i = 0; i < eachRingPointCount[0]; i++)
+				{
+					pxs[i] = ys[0][i];
+					pys[i] = -zs[0][i];
+				}
+
+				for (size_t i = 1; i < eachRingPointCount.size(); i++) {
+					for (size_t j = 0; j < eachRingPointCount[i]; j++) {
+						ipxs[i-1][j] = ys[i][j];
+						ipys[i-1][j] = -zs[i][j];
+					}
+				}
+			}
+		}
+		break;
+		case 2:
+		{
+			if (normal.y > 0)
+			{
+				for (size_t i = 0; i < eachRingPointCount[0]; i++)
+				{
+					pxs[i] = zs[0][i];
+					pys[i] = xs[0][i];
+				}
+
+				for (size_t i = 1; i < eachRingPointCount.size(); i++) {
+					for (size_t j = 0; j < eachRingPointCount[i]; j++) {
+						ipxs[i-1][j] = zs[i][j];
+						ipys[i-1][j] = xs[i][j];
+					}
+				}
+			}
+			else
+			{
+				for (size_t i = 0; i < eachRingPointCount[0]; i++)
+				{
+					pxs[i] = zs[0][i];
+					pys[i] = -xs[0][i];
+				}
+
+				for (size_t i = 1; i < eachRingPointCount.size(); i++) {
+					for (size_t j = 0; j < eachRingPointCount[i]; j++) {
+						ipxs[i-1][j] = zs[i][j];
+						ipys[i-1][j] = -xs[i][j];
+					}
+				}
+			}
+		}
+		break;
+		}
+
+		// 3. set normal of outter ring
+		int outerRingNormal = 1;
+
+		// 4. reverse point order of inner rings if they have same normal direction with outer ring
+		
+		// 4-1. initialize inner ring point indices
+		std::vector<std::vector<size_t>> innerRingPointIndices;
+		for (size_t i = 1; i < eachRingPointCount.size(); i++)
+		{
+			std::vector<size_t> eachRing;
+			innerRingPointIndices.push_back(eachRing);
+			for (size_t j = 0; j < eachRingPointCount[i]; j++) {
+				innerRingPointIndices[i - 1].push_back(j);
+			}
+		}
+
+		//4-2. reverse the direction of the inner ring
+		for (size_t i = 1; i < eachRingPointCount.size(); i++) {
+			int innerRingNormal;
+			double* singleRingX = new double[eachRingPointCount[i]];
+			memset(singleRingX, 0x00, sizeof(double)*eachRingPointCount[i]);
+			double* singleRingY = new double[eachRingPointCount[i]];
+			memset(singleRingY, 0x00, sizeof(double)*eachRingPointCount[i]);
+
+			for (size_t j = 0; j < eachRingPointCount[i]; j++) {
+				singleRingX[j] = ipxs[i - 1][j];
+				singleRingY[j] = ipys[i - 1][j];
+			}
+
+			find2DPlaneNormal(singleRingX, singleRingY, eachRingPointCount[i], innerRingNormal);
+			if (outerRingNormal == innerRingNormal) {
+				std::reverse(innerRingPointIndices[i - 1].begin() + 1, innerRingPointIndices[i - 1].end());
+			}
+			delete[] singleRingX;
+			delete[] singleRingY;
+		}
+
+		// 5. let's ear-cut
+		bool finished = false;
+		size_t innerRingCounter = 0;
+
+		std::vector<double>resultPolygonxs;
+		std::vector<double>resultPolygonys;
+
+		// 5-1. initialize result polygon container with outer ring
+		for (size_t i = 0; i < eachRingPointCount[0]; i++)
+		{
+			resultPolygonxs.push_back(pxs[i]);
+			resultPolygonys.push_back(pys[i]);
+		}
+
+		// 5-2. find lower-left point of MBR from all inner rings
+		double minx, miny;
+		minx = ipxs[0][0];
+		miny = ipys[0][0];
+		for (size_t i = 1; i < eachRingPointCount.size(); i++)
+		{
+			for (size_t j = 0; j < eachRingPointCount[i]; j++)
+			{
+				if(minx > ipxs[i - 1][j]) 
+					minx = ipxs[i - 1][j];
+				if(miny > ipys[i - 1][j])
+					miny = ipys[i - 1][j];
+			}
+		}
+		
+		// 5-3. sort inner rings by distance from this minimum bounding point
+		std::vector<std::pair<size_t, size_t>> sortedRingsAndTheirLowerLeftPointList;
+		std::vector<size_t> eachInnerRingPointCount;
+		eachInnerRingPointCount.insert(eachInnerRingPointCount.begin(), eachRingPointCount.begin() + 1, eachRingPointCount.end());
+		getSortedRingsIndicesByDistFromPoint(ipxs, ipys, eachInnerRingPointCount, minx, miny, sortedRingsAndTheirLowerLeftPointList);
+
+		// clear
+		delete[] pxs;
+		delete[] pys;
+
+		for (size_t i = 1; i < eachRingPointCount.size(); i++)
+		{
+			delete[] ipxs[i-1];
+			delete[] ipys[i-1];
+		}
+		delete[] ipxs;
+		delete[] ipys;
+	}
 
 #ifdef _WIN32
 #include <Windows.h>
