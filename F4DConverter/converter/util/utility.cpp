@@ -909,18 +909,64 @@ namespace gaia3d
 		normal = (lfNormal > 0.0) ? 1 : -1;
 	}
 
-	void getSortedRingsIndicesByDistFromPoint(double** px, double** py,
-												std::vector<size_t>eachSizeOfRing,
+	void getSortedRingsByDistFromPointAndMarkedIndices(double** px, double** py,
+												std::vector<size_t>& eachSizeOfRing,
 												double targetx, double targety,
 												std::vector<std::pair<size_t, size_t>>& indices)
 	{
-	
+		//1. sort rings by distance from the reference point to their points
+		// and mark the index of each ring where minimum distance happens 
+		size_t count = eachSizeOfRing.size();
+		std::map<double, std::pair<size_t, size_t>> sortedRingList;
+		for (size_t i = 0; i < count; i++)
+		{
+			std::map<double, size_t> distlist;
+			double tempx, tempy, squaredDist;
+			for (size_t j = 0; j < eachSizeOfRing[i]; j++)
+			{
+				if (targetx == px[i][j] && targety == py[i][j])
+				{
+					distlist.insert(std::make_pair(0.0, i));
+					continue;
+				}
+
+				tempx = px[i][j];
+				tempy = py[i][j];
+				squaredDist = (targetx - tempx) * (targetx - tempx) + (targety - tempy) * (targety - tempy);
+				distlist.insert(std::make_pair(squaredDist, i));
+			}
+
+			sortedRingList[distlist.begin()->first] = std::pair<size_t, size_t>(i, distlist.begin()->second);
+		}
+
+		//2. push sorted result into the output container
+		std::map<double, std::pair<size_t, size_t>>::iterator it = sortedRingList.begin();
+		for (; it != sortedRingList.end(); it++)
+			indices.push_back(it->second);
+	}
+
+	bool earCutHoleOfPolygon(double** pxs, double** pys, std::vector<size_t>& eachRingPointCount, std::vector<bool>& bReverseInnerRings,
+							size_t indexOfHoleToBeCut, size_t pointIndexOfCut,
+							std::vector<std::pair<size_t, size_t>>&result)
+	{
+		// outer ring index : 0
+		// inner ring(hole) index : indexOfHoleToBeCut
+		// whether this hole should be reversed : bReverseInnerRings[indexOfHoleToBeCut - 1] 
+
+
+		return true;
 	}
 
 	void GeometryUtility::earCut(double** xs, double** ys, double** zs,
 								std::vector<size_t>& eachRingPointCount,
 								std::vector<std::pair<size_t, size_t>>& result)
 	{
+		// eachRingPointCount[0] : point count of outer ring
+		// eachRingPointCount[1] ~ eachRingPointCount[n] : point counts of inner rings
+		// xs[0][n-1] : x coordinate of n-th point on outer ring
+		// xs[m][n-1] : x coordinate of n-th point on m-th inner ring
+		// ys and zs are same with xs
+
 		// 0. basic validation
 		if (eachRingPointCount.size() == 0)
 			return;
@@ -991,21 +1037,17 @@ namespace gaia3d
 		double nz = abs(normal.z);
 
 		projectionType = (nz > nx) ? ((nz > ny) ? 0 : 2) : ((nx > ny) ? 1 : 2);
-		double* pxs = new double[eachRingPointCount[0]];
-		memset(pxs, 0x00, sizeof(double) * eachRingPointCount[0]);
-		double* pys = new double[eachRingPointCount[0]];
-		memset(pys, 0x00, sizeof(double) * eachRingPointCount[0]);
+		double** pxs = new double*[eachRingPointCount.size()];
+		memset(pxs, 0x00, sizeof(double*) * eachRingPointCount.size());
+		double** pys = new double*[eachRingPointCount.size()];
+		memset(pys, 0x00, sizeof(double*) * eachRingPointCount.size());
 
-		double** ipxs = new double*[eachRingPointCount.size() - 1];
-		memset(ipxs, 0x00, sizeof(double*)*(eachRingPointCount.size() - 1));
-		double** ipys = new double*[eachRingPointCount.size() - 1];
-		memset(ipys, 0x00, sizeof(double*)*(eachRingPointCount.size() - 1));
-
-		for (size_t i = 1; i < eachRingPointCount.size(); i++) {
-			ipxs[i-1] = new double[eachRingPointCount[i]];
-			ipys[i-1] = new double[eachRingPointCount[i]];
-			memset(ipxs[i-1], 0x00, sizeof(double) * eachRingPointCount[i]);
-			memset(ipys[i-1], 0x00, sizeof(double) * eachRingPointCount[i]);
+		for (size_t i = 0; i < eachRingPointCount.size(); i++)
+		{
+			pxs[i] = new double[eachRingPointCount[i]];
+			pys[i] = new double[eachRingPointCount[i]];
+			memset(pxs[i], 0x00, sizeof(double) * eachRingPointCount[i]);
+			memset(pxs[i], 0x00, sizeof(double) * eachRingPointCount[i]);
 		}
 
 		switch (projectionType)
@@ -1014,31 +1056,23 @@ namespace gaia3d
 		{
 			if (normal.z > 0)
 			{
-				for (size_t i = 0; i < eachRingPointCount[0]; i++)
+				for (size_t i = 0; i < eachRingPointCount.size(); i++)
 				{
-					pxs[i] = xs[0][i];
-					pys[i] = ys[0][i];
-				}
-
-				for (size_t i = 1; i < eachRingPointCount.size(); i++) {
-					for (size_t j = 0; j < eachRingPointCount[i]; j++) {
-						ipxs[i-1][j] = xs[i][j];
-						ipys[i-1][j] = ys[i][j];
+					for (size_t j = 0; j < eachRingPointCount[i]; j++)
+					{
+						pxs[i][j] = xs[i][j];
+						pys[i][j] = ys[i][j];
 					}
 				}
 			}
 			else
 			{
-				for (size_t i = 0; i < eachRingPointCount[0]; i++)
+				for (size_t i = 0; i < eachRingPointCount.size(); i++)
 				{
-					pxs[i] = xs[0][i];
-					pys[i] = -ys[0][i];
-				}
-
-				for (size_t i = 1; i < eachRingPointCount.size(); i++) {
-					for (size_t j = 0; j < eachRingPointCount[i]; j++) {
-						ipxs[i-1][j] = xs[i][j];
-						ipys[i-1][j] = -ys[i][j];
+					for (size_t j = 0; j < eachRingPointCount[i]; j++)
+					{
+						pxs[i][j] = xs[i][j];
+						pys[i][j] = -ys[i][j];
 					}
 				}
 			}
@@ -1048,31 +1082,23 @@ namespace gaia3d
 		{
 			if (normal.x > 0)
 			{
-				for (size_t i = 0; i < eachRingPointCount[0]; i++)
+				for (size_t i = 0; i < eachRingPointCount.size(); i++)
 				{
-					pxs[i] = ys[0][i];
-					pys[i] = zs[0][i];
-				}
-
-				for (size_t i = 1; i < eachRingPointCount.size(); i++) {
-					for (size_t j = 0; j < eachRingPointCount[i]; j++) {
-						ipxs[i-1][j] = ys[i][j];
-						ipys[i-1][j] = zs[i][j];
+					for (size_t j = 0; j < eachRingPointCount[i]; j++)
+					{
+						pxs[i][j] = ys[i][j];
+						pys[i][j] = zs[i][j];
 					}
 				}
 			}
 			else
 			{
-				for (size_t i = 0; i < eachRingPointCount[0]; i++)
+				for (size_t i = 0; i < eachRingPointCount.size(); i++)
 				{
-					pxs[i] = ys[0][i];
-					pys[i] = -zs[0][i];
-				}
-
-				for (size_t i = 1; i < eachRingPointCount.size(); i++) {
-					for (size_t j = 0; j < eachRingPointCount[i]; j++) {
-						ipxs[i-1][j] = ys[i][j];
-						ipys[i-1][j] = -zs[i][j];
+					for (size_t j = 0; j < eachRingPointCount[i]; j++)
+					{
+						pxs[i][j] = ys[i][j];
+						pys[i][j] = -zs[i][j];
 					}
 				}
 			}
@@ -1082,31 +1108,23 @@ namespace gaia3d
 		{
 			if (normal.y > 0)
 			{
-				for (size_t i = 0; i < eachRingPointCount[0]; i++)
+				for (size_t i = 0; i < eachRingPointCount.size(); i++)
 				{
-					pxs[i] = zs[0][i];
-					pys[i] = xs[0][i];
-				}
-
-				for (size_t i = 1; i < eachRingPointCount.size(); i++) {
-					for (size_t j = 0; j < eachRingPointCount[i]; j++) {
-						ipxs[i-1][j] = zs[i][j];
-						ipys[i-1][j] = xs[i][j];
+					for (size_t j = 0; j < eachRingPointCount[i]; j++)
+					{
+						pxs[i][j] = zs[i][j];
+						pys[i][j] = xs[i][j];
 					}
 				}
 			}
 			else
 			{
-				for (size_t i = 0; i < eachRingPointCount[0]; i++)
+				for (size_t i = 0; i < eachRingPointCount.size(); i++)
 				{
-					pxs[i] = zs[0][i];
-					pys[i] = -xs[0][i];
-				}
-
-				for (size_t i = 1; i < eachRingPointCount.size(); i++) {
-					for (size_t j = 0; j < eachRingPointCount[i]; j++) {
-						ipxs[i-1][j] = zs[i][j];
-						ipys[i-1][j] = -xs[i][j];
+					for (size_t j = 0; j < eachRingPointCount[i]; j++)
+					{
+						pxs[i][j] = zs[i][j];
+						pys[i][j] = -xs[i][j];
 					}
 				}
 			}
@@ -1117,86 +1135,90 @@ namespace gaia3d
 		// 3. set normal of outter ring
 		int outerRingNormal = 1;
 
-		// 4. reverse point order of inner rings if they have same normal direction with outer ring
-		
-		// 4-1. initialize inner ring point indices
-		std::vector<std::vector<size_t>> innerRingPointIndices;
+		// 4. find wheter inner rings should be reversed with comparison to the normal of this polygon
+		std::vector<bool> bReverseInnerRings;
 		for (size_t i = 1; i < eachRingPointCount.size(); i++)
 		{
-			std::vector<size_t> eachRing;
-			innerRingPointIndices.push_back(eachRing);
-			for (size_t j = 0; j < eachRingPointCount[i]; j++) {
-				innerRingPointIndices[i - 1].push_back(j);
-			}
-		}
-
-		//4-2. reverse the direction of the inner ring
-		for (size_t i = 1; i < eachRingPointCount.size(); i++) {
 			int innerRingNormal;
-			double* singleRingX = new double[eachRingPointCount[i]];
-			memset(singleRingX, 0x00, sizeof(double)*eachRingPointCount[i]);
-			double* singleRingY = new double[eachRingPointCount[i]];
-			memset(singleRingY, 0x00, sizeof(double)*eachRingPointCount[i]);
 
-			for (size_t j = 0; j < eachRingPointCount[i]; j++) {
-				singleRingX[j] = ipxs[i - 1][j];
-				singleRingY[j] = ipys[i - 1][j];
-			}
+			find2DPlaneNormal(pxs[i], pys[i], eachRingPointCount[i], innerRingNormal);
 
-			find2DPlaneNormal(singleRingX, singleRingY, eachRingPointCount[i], innerRingNormal);
-			if (outerRingNormal == innerRingNormal) {
-				std::reverse(innerRingPointIndices[i - 1].begin() + 1, innerRingPointIndices[i - 1].end());
-			}
-			delete[] singleRingX;
-			delete[] singleRingY;
+			if (outerRingNormal == innerRingNormal)
+				bReverseInnerRings.push_back(true);
+			else
+				bReverseInnerRings.push_back(false);
 		}
 
 		// 5. let's ear-cut
-		bool finished = false;
-		size_t innerRingCounter = 0;
 
-		std::vector<double>resultPolygonxs;
-		std::vector<double>resultPolygonys;
-
-		// 5-1. initialize result polygon container with outer ring
-		for (size_t i = 0; i < eachRingPointCount[0]; i++)
-		{
-			resultPolygonxs.push_back(pxs[i]);
-			resultPolygonys.push_back(pys[i]);
-		}
-
-		// 5-2. find lower-left point of MBR from all inner rings
+		// 5-1. find lower-left point of MBR from all inner rings
 		double minx, miny;
-		minx = ipxs[0][0];
-		miny = ipys[0][0];
+		minx = pxs[1][0];
+		miny = pys[1][0];
 		for (size_t i = 1; i < eachRingPointCount.size(); i++)
 		{
 			for (size_t j = 0; j < eachRingPointCount[i]; j++)
 			{
-				if(minx > ipxs[i - 1][j]) 
-					minx = ipxs[i - 1][j];
-				if(miny > ipys[i - 1][j])
-					miny = ipys[i - 1][j];
+				if(minx > pxs[i][j]) 
+					minx = pxs[i][j];
+				if(miny > pys[i][j])
+					miny = pys[i][j];
 			}
 		}
 		
-		// 5-3. sort inner rings by distance from this minimum bounding point
+		// 5-2. sort inner rings by distance from this minimum bounding point
 		std::vector<std::pair<size_t, size_t>> sortedRingsAndTheirLowerLeftPointList;
 		std::vector<size_t> eachInnerRingPointCount;
 		eachInnerRingPointCount.insert(eachInnerRingPointCount.begin(), eachRingPointCount.begin() + 1, eachRingPointCount.end());
-		getSortedRingsIndicesByDistFromPoint(ipxs, ipys, eachInnerRingPointCount, minx, miny, sortedRingsAndTheirLowerLeftPointList);
+		getSortedRingsByDistFromPointAndMarkedIndices(pxs + 1, pys + 1, eachInnerRingPointCount, minx, miny, sortedRingsAndTheirLowerLeftPointList);
 
-		// clear
+		// 5-4. ear cut between outer ring and inner rings by turn on marked indices
+		std::vector<size_t>eliminatedHoleIndices;
+		while (true)
+		{
+			// 1. find the nearest hole not yet eliminated
+			size_t sortedHoleIndexNotEliminated = 0;
+			for (size_t i = 0; i < sortedRingsAndTheirLowerLeftPointList.size(); i++)
+			{
+				bool bEliminated = false;
+				
+				for (size_t j = 0; j < eliminatedHoleIndices.size(); j++)
+				{
+					if (sortedRingsAndTheirLowerLeftPointList[i].first == eliminatedHoleIndices[j])
+					{
+						bEliminated = true;
+						break;
+					}
+				}
+
+				if (!bEliminated)
+				{
+					sortedHoleIndexNotEliminated = i;
+					break;
+				}
+			}
+
+			// 2. eliminated the selected inner hole
+			size_t targetHoleIndex = sortedRingsAndTheirLowerLeftPointList[sortedHoleIndexNotEliminated].first + 1;
+			size_t targetPointIndexOfTargetHole = sortedRingsAndTheirLowerLeftPointList[sortedHoleIndexNotEliminated].second;
+
+			if (earCutHoleOfPolygon(pxs, pys, eachRingPointCount, bReverseInnerRings, targetHoleIndex, targetPointIndexOfTargetHole, result))
+			{
+				eliminatedHoleIndices.push_back(targetHoleIndex);
+			}
+
+			if (eliminatedHoleIndices.size() == eachInnerRingPointCount.size())
+				break;
+		}
+
+		// 6. clear
+		for (size_t i = 0; i < eachRingPointCount.size(); i++)
+		{
+			delete[] pxs[i];
+			delete[] pys[i];
+		}
 		delete[] pxs;
 		delete[] pys;
-
-		for (size_t i = 1; i < eachRingPointCount.size(); i++)
-		{
-			delete[] ipxs[i-1];
-			delete[] ipys[i-1];
-		}
-		delete[] ipxs;
-		delete[] ipys;
 	}
 
 #ifdef _WIN32
