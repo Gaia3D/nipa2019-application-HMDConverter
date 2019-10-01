@@ -531,6 +531,43 @@ namespace gaia3d
 		normal = (lfNormal > 0.0) ? 1 : -1;
 	}
 
+	bool intersectionTestOnTwoLineSegments( double x1Start, double y1Start, double x1End, double y1End,
+											double x2Start, double y2Start, double x2End, double y2End)
+	{
+		gaia3d::Point3D normalVector;
+		double dotProdLine1, dotProdLine2Start, dotProdLine2End;
+		double dotProdLine2, dotProdLine1Start, dotProdLine1End;
+		double tolerance = 1E-7;
+
+		// find vector normal to line 1
+		normalVector.set(-(y1End - y1Start), x1End - x1Start, 0.0);
+		normalVector.normalize();
+
+		// dot products of 4 nodes in 2 lines on this normal vector
+		// (dot products of 2 nodes in line 1 on this normal vector are same)
+		dotProdLine1 = normalVector.x * x1Start + normalVector.y * y1Start;
+		dotProdLine2Start = normalVector.x * x2Start + normalVector.y * y2Start;
+		dotProdLine2End = normalVector.x * x2End + normalVector.y * y2End;
+		if ((dotProdLine1 > dotProdLine2Start - tolerance && dotProdLine1 > dotProdLine2End - tolerance) ||
+			(dotProdLine1 < dotProdLine2Start + tolerance && dotProdLine1 < dotProdLine2End + tolerance))
+			return false;
+
+		// find vector normal to line 2
+		normalVector.set(-(y2End - y2Start), x2End - x2Start, 0.0);
+		normalVector.normalize();
+
+		// dot products of 4 nodes in 2 lines on this normal vector
+		// (dot products of 2 nodes in line 2 on this normal vector are same)
+		dotProdLine2 = normalVector.x * x2Start + normalVector.y * y2Start;
+		dotProdLine1Start = normalVector.x * x1Start + normalVector.y * y1Start;
+		dotProdLine1End = normalVector.x * x1End + normalVector.y * y1End;
+		if ((dotProdLine2 > dotProdLine1Start - tolerance && dotProdLine2 > dotProdLine1End - tolerance) ||
+			(dotProdLine2 < dotProdLine1Start + tolerance && dotProdLine2 < dotProdLine1End + tolerance))
+			return false;
+
+		return true;
+	}
+
 	void tessellateIntoSubPolygons(double* pxs, double* pys,
 									std::vector<size_t>& polygonVertexIndices,
 									std::vector<size_t>& concavePointIndicesOnAllPoints,
@@ -577,52 +614,21 @@ namespace gaia3d
 		double slicerStartX = pxs[concavePointIndexOnAllPoints], slicerStartY = pys[concavePointIndexOnAllPoints];
 		double slicerEndX, slicerEndY;
 		double targetStartX, targetStartY, targetEndX, targetEndY;
-		gaia3d::Point3D normalVector;
-		double dotProdLine1, dotProdLine2Start, dotProdLine2End;
-		double dotProdLine2, dotProdLine1Start, dotProdLine1End;
-		double tolerance = 1E-6;
 		for (size_t i = 0; i < sortedPointIndicesOnAllPoints.size(); i++)
 		{
 			// 2.1 line interseciton test between the slicer and each edge of polygon
 			slicerEndX = pxs[sortedPointIndicesOnAllPoints[i]];
 			slicerEndY = pys[sortedPointIndicesOnAllPoints[i]];
-			bool bIntersected = false, bIntersectedCase1, bIntersectedCase2;
+			bool bIntersected = false;
 			for (size_t j = 0; j < polygonPointCount-1; j++)
 			{
 				targetStartX = pxs[polygonVertexIndices[j]];
 				targetStartY = pys[polygonVertexIndices[j]];
 				targetEndX = pxs[polygonVertexIndices[j + 1]];
 				targetEndY = pys[polygonVertexIndices[j + 1]];
-				
-				// find vector normal to line 1
-				normalVector.set(-(slicerEndY - slicerStartY), slicerEndX - slicerStartX, 0.0);
-				normalVector.normalize();
 
-				// dot products of 4 nodes in 2 lines on this normal vector
-				// (dot products of 2 nodes in line 1 on this normal vector are same)
-				dotProdLine1 = normalVector.x * slicerStartX + normalVector.y * slicerStartY;
-				dotProdLine2Start = normalVector.x * targetStartX + normalVector.y * targetStartY;
-				dotProdLine2End = normalVector.x * targetEndX + normalVector.y * targetEndY;
-				bIntersectedCase1 = true;
-				if ((dotProdLine1 > dotProdLine2Start - tolerance && dotProdLine1 > dotProdLine2End - tolerance) ||
-					(dotProdLine1 < dotProdLine2Start + tolerance && dotProdLine1 < dotProdLine2End + tolerance))
-					bIntersectedCase1 = false;
-
-				// find vector normal to line 2
-				normalVector.set(-(targetEndY - targetStartY), targetEndX - targetStartY, 0.0);
-				normalVector.normalize();
-
-				// dot products of 4 nodes in 2 lines on this normal vector
-				// (dot products of 2 nodes in line 2 on this normal vector are same)
-				dotProdLine2 = normalVector.x * targetStartX + normalVector.y * targetStartY;
-				dotProdLine1Start = normalVector.x * slicerStartX + normalVector.y * slicerStartY;
-				dotProdLine1End = normalVector.x * slicerEndX + normalVector.y * slicerEndY;
-				bIntersectedCase2 = true;
-				if ((dotProdLine2 > dotProdLine1Start - tolerance && dotProdLine2 > dotProdLine1End - tolerance) ||
-					(dotProdLine2 < dotProdLine1Start + tolerance && dotProdLine2 < dotProdLine1End + tolerance))
-					bIntersectedCase2 = false;
-
-				if (bIntersectedCase1 && bIntersectedCase2)
+				if (intersectionTestOnTwoLineSegments(  slicerStartX, slicerStartY, slicerEndX, slicerEndY,
+														targetStartX, targetStartY, targetEndX, targetEndY  ) )
 				{
 					bIntersected = true;
 					break;
@@ -945,14 +951,116 @@ namespace gaia3d
 			indices.push_back(it->second);
 	}
 
-	bool earCutHoleOfPolygon(double** pxs, double** pys, std::vector<size_t>& eachRingPointCount, std::vector<bool>& bReverseInnerRings,
-							size_t indexOfHoleToBeCut, size_t pointIndexOfCut,
-							std::vector<std::pair<size_t, size_t>>&result)
+	bool earCutHoleOfPolygon(double** pxs, double** pys, std::vector<size_t>& eachRingPointCount,
+							size_t indexOfHoleToBeCut, size_t pointIndexOfCut, bool bReverseInnerRing,
+							std::vector<std::pair<size_t, size_t>>& mergedOuterRing)
 	{
-		// outer ring index : 0
-		// inner ring(hole) index : indexOfHoleToBeCut
-		// whether this hole should be reversed : bReverseInnerRings[indexOfHoleToBeCut - 1] 
+		// pxs, pys : all 2D point coordinates of a outer ring and inner rings
+		// eachRingPointCount : point count of all rings(outer ring index : 0, inner ring(hole) index : 1 ~ n-1)
+		// bReverseInnerRings : whether this inner rings should be reversed or not
+		// indexOfHoleToBeCut : target inner ring to be ear-cut
+		// pointIndexOfCut : ear cut point of the target inner ring
+		// outerRing : container which is initially filled with outer ring points and will be filled with ear-cut result finally
 
+		// 1. sort points of outer ring by distance from the ear-cut point of target inner hole
+		std::map<double, std::pair<size_t, size_t>> sortedOuterRingPoints;
+		std::map<double, size_t> sortedOuterRingPointIndices;
+		double xInnerHoleToBeCut = pxs[indexOfHoleToBeCut][pointIndexOfCut], yInnerHoleToBeCut = pys[indexOfHoleToBeCut][pointIndexOfCut];
+		double xOuterRing, yOuterRing;
+		double squaredDist;
+		for (size_t i = 0; i < mergedOuterRing.size(); i++)
+		{
+			xOuterRing = pxs[mergedOuterRing[i].first][mergedOuterRing[i].second];
+			yOuterRing = pys[mergedOuterRing[i].first][mergedOuterRing[i].second];
+
+			squaredDist = (xOuterRing - xInnerHoleToBeCut)*(xOuterRing - xInnerHoleToBeCut) + (yOuterRing - yInnerHoleToBeCut)*(yOuterRing - yInnerHoleToBeCut);
+
+			sortedOuterRingPoints[squaredDist] = mergedOuterRing[i];
+			sortedOuterRingPointIndices[squaredDist] = i;
+		}
+
+		// 2. find a point on outer ring
+		// where line segment composed of this point and point on the inner hole to be cut NEVER intersects with 
+		// any edges of outer ring and all inner holes.
+		std::map<double, std::pair<size_t, size_t>>::iterator iter1 = sortedOuterRingPoints.begin();
+		std::map<double, size_t>::iterator iter2 = sortedOuterRingPointIndices.begin();
+		bool bIntersected;
+		double xToBeCutStart, yToBeCutStart;
+		size_t pointIndexOfOuterRingToBeCut;
+		bool bThisInnerHoleCanBeEarCut = false;
+		for (; iter1 != sortedOuterRingPoints.end(); iter1++, iter2++)
+		{
+			bIntersected = false;
+			xToBeCutStart = pxs[iter1->second.first][iter1->second.second];
+			yToBeCutStart = pys[iter1->second.first][iter1->second.second];
+			for (size_t i = 0; i < eachRingPointCount.size(); i++)
+			{
+				for (size_t j = 0; j < eachRingPointCount[i]; j++)
+				{
+					if (intersectionTestOnTwoLineSegments(  xToBeCutStart, yToBeCutStart, xInnerHoleToBeCut, yInnerHoleToBeCut,
+															pxs[i][j], pys[i][j], pxs[i][(j+1)%eachRingPointCount[i]], pys[i][(j+1)%eachRingPointCount[i]] ) )
+					{
+						bIntersected = true;
+						break;
+					}
+				}
+			}
+
+			if (!bIntersected)
+			{
+				pointIndexOfOuterRingToBeCut = iter2->second;
+				bThisInnerHoleCanBeEarCut = true;
+				break;
+			}
+		}
+
+		if (!bThisInnerHoleCanBeEarCut)
+			return false;
+
+		// 3. merge outer ring and the target inner hole
+		// At this point, outerRing[pointIndexOfOuterRingToBeCut] is the point of outer ring to be ear cut
+		
+		if (pointIndexOfOuterRingToBeCut == 0)
+		{
+			mergedOuterRing.push_back(mergedOuterRing[0]);
+
+			if (bReverseInnerRing)
+			{
+				for (size_t i = 0; i < eachRingPointCount[indexOfHoleToBeCut]; i++)
+					mergedOuterRing.push_back(std::pair<size_t, size_t>(indexOfHoleToBeCut, (eachRingPointCount[indexOfHoleToBeCut] + pointIndexOfCut - i) % eachRingPointCount[indexOfHoleToBeCut]));
+			}
+			else
+			{
+				for (size_t i = 0; i < eachRingPointCount[indexOfHoleToBeCut]; i++)
+					mergedOuterRing.push_back(std::pair<size_t, size_t>(indexOfHoleToBeCut, (i + pointIndexOfCut) % eachRingPointCount[indexOfHoleToBeCut]));
+			}
+			mergedOuterRing.push_back(std::pair<size_t, size_t>(indexOfHoleToBeCut, pointIndexOfCut));
+		}
+		else
+		{
+			std::vector<std::pair<size_t, size_t>> mergedResult;
+
+			for (size_t i = 0; i <= pointIndexOfOuterRingToBeCut; i++)
+				mergedResult.push_back(mergedOuterRing[i]);
+
+			if (bReverseInnerRing)
+			{
+				for (size_t i = 0; i < eachRingPointCount[indexOfHoleToBeCut]; i++)
+					mergedResult.push_back(std::pair<size_t, size_t>(indexOfHoleToBeCut, (eachRingPointCount[indexOfHoleToBeCut] + pointIndexOfCut - i) % eachRingPointCount[indexOfHoleToBeCut]));
+			}
+			else
+			{
+				for (size_t i = 0; i < eachRingPointCount[indexOfHoleToBeCut]; i++)
+					mergedResult.push_back(std::pair<size_t, size_t>(indexOfHoleToBeCut, (i+pointIndexOfCut)%eachRingPointCount[indexOfHoleToBeCut]));
+			}
+			mergedResult.push_back(std::pair<size_t, size_t>(indexOfHoleToBeCut, pointIndexOfCut));
+
+			for (size_t i = pointIndexOfOuterRingToBeCut; i < mergedOuterRing.size(); i++)
+				mergedResult.push_back(mergedOuterRing[i]);
+
+			mergedOuterRing.clear();
+			mergedOuterRing.insert(mergedOuterRing.begin(), mergedResult.begin(), mergedResult.end());
+		}
 
 		return true;
 	}
@@ -1172,12 +1280,17 @@ namespace gaia3d
 		eachInnerRingPointCount.insert(eachInnerRingPointCount.begin(), eachRingPointCount.begin() + 1, eachRingPointCount.end());
 		getSortedRingsByDistFromPointAndMarkedIndices(pxs + 1, pys + 1, eachInnerRingPointCount, minx, miny, sortedRingsAndTheirLowerLeftPointList);
 
+		// 5-3. initialize result container by filling it with outer ring points
+		result.clear();
+		for (size_t i = 0; i < eachRingPointCount[0]; i++)
+			result.push_back(std::pair<size_t, size_t>(0, i));
+
 		// 5-4. ear cut between outer ring and inner rings by turn on marked indices
 		std::vector<size_t>eliminatedHoleIndices;
 		while (true)
 		{
 			// 1. find the nearest hole not yet eliminated
-			size_t sortedHoleIndexNotEliminated = 0;
+			size_t nearestSortedHoleIndexNotEliminated = 0;
 			for (size_t i = 0; i < sortedRingsAndTheirLowerLeftPointList.size(); i++)
 			{
 				bool bEliminated = false;
@@ -1193,19 +1306,18 @@ namespace gaia3d
 
 				if (!bEliminated)
 				{
-					sortedHoleIndexNotEliminated = i;
+					nearestSortedHoleIndexNotEliminated = i;
 					break;
 				}
 			}
 
 			// 2. eliminated the selected inner hole
-			size_t targetHoleIndex = sortedRingsAndTheirLowerLeftPointList[sortedHoleIndexNotEliminated].first + 1;
-			size_t targetPointIndexOfTargetHole = sortedRingsAndTheirLowerLeftPointList[sortedHoleIndexNotEliminated].second;
+			size_t targetHoleIndex = sortedRingsAndTheirLowerLeftPointList[nearestSortedHoleIndexNotEliminated].first + 1;
+			size_t targetPointIndexOfTargetHole = sortedRingsAndTheirLowerLeftPointList[nearestSortedHoleIndexNotEliminated].second;
+			bool bReverseThisInnerHole = bReverseInnerRings[targetHoleIndex - 1];
 
-			if (earCutHoleOfPolygon(pxs, pys, eachRingPointCount, bReverseInnerRings, targetHoleIndex, targetPointIndexOfTargetHole, result))
-			{
+			if (earCutHoleOfPolygon(pxs, pys, eachRingPointCount, targetHoleIndex, targetPointIndexOfTargetHole, bReverseThisInnerHole, result))
 				eliminatedHoleIndices.push_back(targetHoleIndex);
-			}
 
 			if (eliminatedHoleIndices.size() == eachInnerRingPointCount.size())
 				break;
