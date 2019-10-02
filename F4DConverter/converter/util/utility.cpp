@@ -583,10 +583,11 @@ namespace gaia3d
 		concavePoint.set(pxs[concavePointIndexOnAllPoints], pys[concavePointIndexOnAllPoints], 0.0);
 
 		// 1. sort all points by acsending distance from the concave point except the concave point and its 2 neighbor points.
-		std::map<double, size_t> sortedPointIndicesOnAllPointsMap, sortedPointIndicesOnThisPolygonMap;
+		std::map<double, std::vector<size_t>> sortedPointIndicesOnAllPointsMap, sortedPointIndicesOnThisPolygonMap;
 		size_t prevIndexOfConcavePointOnThisPolygon = (concavePointIndexOnThisPolygon == 0) ? polygonPointCount - 1 : concavePointIndexOnThisPolygon - 1;
 		size_t nextIndexOfConcavePointOnThisPolygon = (concavePointIndexOnThisPolygon == polygonPointCount - 1) ? 0 : concavePointIndexOnThisPolygon + 1;
 		gaia3d::Point3D targetPoint;
+		double squaredDist;
 		for (size_t i = 0; i < polygonVertexIndices.size(); i++)
 		{
 			if (i == concavePointIndexOnThisPolygon ||
@@ -595,18 +596,29 @@ namespace gaia3d
 				continue;
 
 			targetPoint.set(pxs[polygonVertexIndices[i]], pys[polygonVertexIndices[i]], 0.0);
-			sortedPointIndicesOnAllPointsMap[(targetPoint.squaredDistanceTo(concavePoint))] = polygonVertexIndices[i];
-			sortedPointIndicesOnThisPolygonMap[(targetPoint.squaredDistanceTo(concavePoint))] = i;
+			squaredDist = targetPoint.squaredDistanceTo(concavePoint);
+			if (sortedPointIndicesOnAllPointsMap.find(squaredDist) == sortedPointIndicesOnAllPointsMap.end())
+			{
+				sortedPointIndicesOnAllPointsMap[squaredDist] = std::vector<size_t>();
+				sortedPointIndicesOnThisPolygonMap[squaredDist] = std::vector<size_t>();
+			}
+				
+
+			sortedPointIndicesOnAllPointsMap[squaredDist].push_back(polygonVertexIndices[i]);
+			sortedPointIndicesOnThisPolygonMap[squaredDist].push_back(i);
 		}
 		
 		std::vector<size_t> sortedPointIndicesOnAllPoints;
 		std::vector<size_t> sortedPointIndicesOnThisPolygon;
-		for (std::map<double, size_t>::iterator itr1 = sortedPointIndicesOnAllPointsMap.begin(), itr2 = sortedPointIndicesOnThisPolygonMap.begin();
+		for (std::map<double, std::vector<size_t>>::iterator itr1 = sortedPointIndicesOnAllPointsMap.begin(), itr2 = sortedPointIndicesOnThisPolygonMap.begin();
 			itr1 != sortedPointIndicesOnAllPointsMap.end();
 			itr1++, itr2++)
 		{
-			sortedPointIndicesOnAllPoints.push_back(itr1->second);
-			sortedPointIndicesOnThisPolygon.push_back(itr2->second);
+			for (size_t i = 0; i < itr1->second.size(); i++)
+			{
+				sortedPointIndicesOnAllPoints.push_back((itr1->second)[i]);
+				sortedPointIndicesOnThisPolygon.push_back((itr2->second)[i]);
+			}
 		}
 			
 
@@ -1018,7 +1030,7 @@ namespace gaia3d
 			return false;
 
 		// 3. merge outer ring and the target inner hole
-		// At this point, outerRing[pointIndexOfOuterRingToBeCut] is the point of outer ring to be ear cut
+		// At this point, mergedOuterRing[pointIndexOfOuterRingToBeCut] is the point of outer ring to be ear cut
 		
 		if (pointIndexOfOuterRingToBeCut == 0)
 		{

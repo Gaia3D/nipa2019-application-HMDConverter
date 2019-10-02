@@ -675,6 +675,15 @@ void extractGeometryInformation(RevNode* node, std::vector<gaia3d::TrianglePolyh
 						delete[] yss;
 						delete[] zss;
 
+						for (size_t k = 0; k < subSurfaceCount; k++)
+						{
+							subSurface = surface->subSurfaces[k];
+							vertexCount = subSurface->vertices.size();
+
+							for (size_t m = 0; m < vertexCount; m++)
+								delete subSurface->vertices[m];
+						}
+
 						printf("[WARNING] Ear cutting failed. : %s\n", node->id.c_str());
 
 						continue;
@@ -689,8 +698,6 @@ void extractGeometryInformation(RevNode* node, std::vector<gaia3d::TrianglePolyh
 						for (size_t m = 0; m < vertexCount; m++)
 							polyhedron->getVertices().push_back(subSurface->vertices[m]);
 					}
-
-					f4dSurface = new gaia3d::Surface;
 
 					double* xs = new double[totalVertexCount];
 					memset(xs, 0x00, sizeof(double)*totalVertexCount);
@@ -737,6 +744,10 @@ void extractGeometryInformation(RevNode* node, std::vector<gaia3d::TrianglePolyh
 					delete[] ys;
 					delete[] zs;
 
+					if (triangleIndices.empty())
+						continue;
+
+					f4dSurface = new gaia3d::Surface;
 					gaia3d::Triangle* triangle;
 					for (size_t m = 0; m < triangleIndices.size() / 3; m++)
 					{
@@ -807,6 +818,12 @@ void extractGeometryInformation(RevNode* node, std::vector<gaia3d::TrianglePolyh
 
 					polyhedron->getSurfaces().push_back(f4dSurface);
 				}
+			}
+
+			if (polyhedron->getVertices().empty() || polyhedron->getSurfaces().empty())
+			{
+				delete polyhedron;
+				return;
 			}
 
 			polyhedron->setId(container.size());
