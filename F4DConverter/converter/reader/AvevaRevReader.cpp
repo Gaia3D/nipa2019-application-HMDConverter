@@ -287,7 +287,7 @@ bool createNode(FILE* file, RevNode*& rootNode, RevNode*& currentNode, std::vect
 
 	readALine(line, file); // id of this node
 	//currentNode->id = gaia3d::StringUtility::convertMultibyteToUtf8(std::string(line));
-	currentNode->id =std::string(line);
+	currentNode->id =std::string(strtok(line, "\n"));
 
 	readALine(line, file); // geometric center of this node
 	currentNode->bboxCenter = std::string(line);

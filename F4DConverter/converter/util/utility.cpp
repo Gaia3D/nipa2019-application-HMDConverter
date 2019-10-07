@@ -935,32 +935,39 @@ namespace gaia3d
 		//1. sort rings by distance from the reference point to their points
 		// and mark the index of each ring where minimum distance happens 
 		size_t count = eachSizeOfRing.size();
-		std::map<double, std::pair<size_t, size_t>> sortedRingList;
+		std::map<double, std::vector<std::pair<size_t, size_t>> > sortedRingList;
 		for (size_t i = 0; i < count; i++)
 		{
-			std::map<double, size_t> distlist;
+			std::map<double, std::vector<size_t>> sortedPointListByDistance;
 			double tempx, tempy, squaredDist;
 			for (size_t j = 0; j < eachSizeOfRing[i]; j++)
 			{
 				if (targetx == px[i][j] && targety == py[i][j])
 				{
-					distlist.insert(std::make_pair(0.0, i));
+					if (sortedPointListByDistance.find(0.0) == sortedPointListByDistance.end())
+						sortedPointListByDistance[0.0] = std::vector<size_t>();
+
+					sortedPointListByDistance[0.0].push_back(j);
 					continue;
 				}
 
 				tempx = px[i][j];
 				tempy = py[i][j];
 				squaredDist = (targetx - tempx) * (targetx - tempx) + (targety - tempy) * (targety - tempy);
-				distlist.insert(std::make_pair(squaredDist, i));
+				if (sortedPointListByDistance.find(squaredDist) == sortedPointListByDistance.end())
+					sortedPointListByDistance[squaredDist] = std::vector<size_t>();
+				sortedPointListByDistance[squaredDist].push_back(j);
 			}
 
-			sortedRingList[distlist.begin()->first] = std::pair<size_t, size_t>(i, distlist.begin()->second);
+			if (sortedRingList.find(sortedPointListByDistance.begin()->first) == sortedRingList.end())
+				sortedRingList[sortedPointListByDistance.begin()->first] = std::vector<std::pair<size_t, size_t>>();
+			sortedRingList[sortedPointListByDistance.begin()->first].push_back(std::pair<size_t, size_t>(i, (sortedPointListByDistance.begin()->second)[0]));
 		}
 
 		//2. push sorted result into the output container
-		std::map<double, std::pair<size_t, size_t>>::iterator it = sortedRingList.begin();
+		std::map<double, std::vector<std::pair<size_t, size_t>>>::iterator it = sortedRingList.begin();
 		for (; it != sortedRingList.end(); it++)
-			indices.push_back(it->second);
+			indices.push_back((it->second)[0]);
 	}
 
 	bool earCutHoleOfPolygon(double** pxs, double** pys, std::vector<size_t>& eachRingPointCount,
@@ -1329,7 +1336,7 @@ namespace gaia3d
 			bool bReverseThisInnerHole = bReverseInnerRings[targetHoleIndex - 1];
 
 			if (earCutHoleOfPolygon(pxs, pys, eachRingPointCount, targetHoleIndex, targetPointIndexOfTargetHole, bReverseThisInnerHole, result))
-				eliminatedHoleIndices.push_back(targetHoleIndex);
+				eliminatedHoleIndices.push_back(targetHoleIndex - 1);
 
 			if (eliminatedHoleIndices.size() == eachInnerRingPointCount.size())
 				break;
