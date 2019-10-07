@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-#ifdef AVEVAFORMAT
+#ifdef AVEVAREVIEWFORMAT
 
 #include "aReader.h"
 

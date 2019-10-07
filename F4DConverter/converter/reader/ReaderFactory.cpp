@@ -23,7 +23,7 @@
 #ifdef POINTCLOUDFORMAT
 #include "PointCloudReader.h"
 #endif
-#ifdef AVEVAFORMAT
+#ifdef AVEVAREVIEWFORMAT
 #include "AvevaRevReader.h"
 #endif
 
@@ -91,7 +91,7 @@ aReader* ReaderFactory::makeReader(std::string& filePath)
 	}
 #endif
 
-#ifdef AVEVAFORMAT
+#ifdef AVEVAREVIEWFORMAT
 	if (fileExt.compare(std::string("rev")) == 0)
 	{
 		return new AvevaRevReader;

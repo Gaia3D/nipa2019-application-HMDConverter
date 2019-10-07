@@ -1,6 +1,6 @@
 ﻿#include "stdafx.h"
 
-#ifdef AVEVAFORMAT
+#ifdef AVEVAREVIEWFORMAT
 
 #include "AvevaRevReader.h"
 
