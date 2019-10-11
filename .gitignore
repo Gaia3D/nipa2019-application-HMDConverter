@@ -31,9 +31,8 @@ UpgradeLog.htm
 !/bin/proj
 /ipch
 /x64
-/external
+/external/*
 !/external/proj
-!/external/glew-2.0.0
 
 # Executables
 *.exe
