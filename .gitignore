@@ -27,15 +27,20 @@ UpgradeLog.htm
 *.ipdb
 
 # Directories
+bin
 ipch
 Debug
 Release
 data
-x64external
+x64
 dll
+!external\proj\dll
 lib
+!external\proj\lib
 
 # Executables
 *.exe
 *.dll
+!proj_5_2.dll
 *.lib
+!proj_5_2.lib

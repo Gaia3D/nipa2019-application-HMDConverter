@@ -6,6 +6,7 @@
 
 #include <io.h>
 #include <sys/stat.h>
+#include <algorithm>
 
 #include "proj_api.h"
 
@@ -623,6 +624,34 @@ void CConverterManager::collectTargetFiles(std::string& inputFolder, std::map<st
 #ifdef _WIN32
 			dataFile = gaia3d::StringUtility::convertMultibyteToUtf8(dataFile);
 #endif
+
+			// WARNING!!! this part is customized for HMD
+			std::string::size_type dotPosition = dataFile.rfind(".");
+			if (dotPosition == std::string::npos)
+			{
+				result = _findnext(handle, &fd);
+				continue;
+			}
+
+			std::string::size_type fileExtLength = dataFile.length() - dotPosition - 1;
+			std::string fileExt = dataFile.substr(dotPosition + 1, fileExtLength);
+			std::transform(fileExt.begin(), fileExt.end(), fileExt.begin(), towlower);
+
+			if (fileExt.compare(std::string("rev")) != 0)
+			{
+				result = _findnext(handle, &fd);
+				continue;
+			}
+
+			std::string tempDataFile = dataFile;
+			std::transform(tempDataFile.begin(), tempDataFile.end(), tempDataFile.begin(), towlower);
+			if (tempDataFile.find("_hull.rev") != std::string::npos)
+			{
+				result = _findnext(handle, &fd);
+				continue;
+			}
+			// WARNING end
+
 			std::string dataFileFullPath = inputFolder + std::string("/") + dataFile;
 			targetFiles[dataFile] = dataFileFullPath;
 		}
