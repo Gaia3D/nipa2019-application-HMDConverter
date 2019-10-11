@@ -27,16 +27,21 @@ UpgradeLog.htm
 *.ipdb
 
 # Directories
-/bin
+/bin/*
 !/bin/proj
 /ipch
 /x64
 /external/*
 !/external/proj
+!/external/glew-2.0.0
+Win32
+
 
 # Executables
 *.exe
 *.dll
 !proj_5_2.dll
+!glew32.dll
 *.lib
 !proj_5_2.lib
+!glew32.lib
