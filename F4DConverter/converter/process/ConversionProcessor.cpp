@@ -34,6 +34,8 @@ ConversionProcessor::ConversionProcessor()
 	longitude = latitude = 0.0;
 	altitude = 0.0f;
 
+	bResponsibleDisposingGeometries = true;
+
 	scv = new SceneControlVariables();
 }
 
@@ -285,9 +287,13 @@ void ConversionProcessor::clear()
 
 	attributes.clear();
 
-	size_t meshCount = allMeshes.size();
-	for(size_t i = 0; i < meshCount; i++)
-		delete allMeshes[i];
+	if (bResponsibleDisposingGeometries)
+	{
+		size_t meshCount = allMeshes.size();
+		for (size_t i = 0; i < meshCount; i++)
+			delete allMeshes[i];
+	}
+
 	allMeshes.clear();
 
 	thisSpatialOctree.clear();

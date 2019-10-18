@@ -108,7 +108,10 @@ public:
 bool createNode(FILE* file, RevNode*& rootNode, RevNode*& currentNode, std::vector<RevNode*>& createdRootNodes);
 void readPrimInfo(FILE* file, RevNode* node);
 void readObstInfo(FILE* file, RevNode* node);
-void extractGeometryInformation(RevNode* node, std::vector<gaia3d::TrianglePolyhedron*>& container);
+void extractGeometryInformation(RevNode* node,
+								std::vector<gaia3d::TrianglePolyhedron*>& container,
+								std::map<std::string, std::vector<gaia3d::TrianglePolyhedron*>>& containers,
+								bool bBuildHiararchy);
 void tokenizeFloatingNumbers(char buffer[], std::vector<double>& receiver);
 
 #define LineLengthMax 1024
@@ -133,18 +136,177 @@ void readALine(char buffer[], FILE*&file)
 		}
 	}
 #endif
-	if (readingMode != 0)
+}
+
+#ifdef TEMPORARY_TEST
+#include "../util/json/json.h"
+void extractHiararchy(RevNode* node, Json::Value& container)
+{
+	if (!container.isArray())
 	{
-		if (std::string(buffer).find(std::string("CNTB")) != std::string::npos ||
-			std::string(buffer).find(std::string("CNTE")) != std::string::npos ||
-			std::string(buffer).find(std::string("PRIM")) != std::string::npos ||
-			std::string(buffer).find(std::string("OBST")) != std::string::npos)
+		printf("[ERROR] Wrong Json Value Type\n");
+		return;
+	}
+
+	Json::Value jsonNode(Json::objectValue);
+	
+	jsonNode["1:id"] = node->id;
+
+	bool bHasGeom = false;
+	for (size_t i = 0; i < node->prims.size(); i++)
+	{
+		if (node->prims[i]->primType == RevPrim::TYPE11)
 		{
-			printf("[ERROR]Parsing Status Broken. line number : %zd\n", readLineCount);
-			_ASSERT(false);
+			bHasGeom = true;
+			break;
+		}
+	}
+	jsonNode["2:hasGeometry"] = bHasGeom;
+
+	if (!node->children.empty())
+	{
+		jsonNode["3:children"] = Json::Value(Json::arrayValue);
+		for (size_t i = 0; i < node->children.size(); i++)
+		{
+			extractHiararchy(node->children[i], jsonNode["3:children"]);
+		}
+	}
+
+	container.append(jsonNode);
+}
+
+void dumpHiararchy(std::vector<RevNode*>& nodes, std::string filePath)
+{
+	Json::Value roots(Json::arrayValue);
+	for (size_t i = 0; i < nodes.size(); i++)
+		extractHiararchy(nodes[i], roots);
+
+	Json::StyledWriter writer;
+	std::string result = writer.write(roots);
+
+	FILE* file = NULL;
+	file = fopen(filePath.c_str(), "wt");
+	fprintf(file, "%s", result.c_str());
+	fclose(file);
+}
+
+void extractObjectIdPattern(RevNode* node, std::string parentIdPattern, Json::Value& container)
+{
+	if (!container.isArray())
+	{
+		printf("[ERROR] Wrong Json Value Type\n");
+		return;
+	}
+
+	std::string nodeId = node->id;
+
+	if (nodeId.front() == '/')
+	{
+		if (!node->children.empty())
+		{
+			for (size_t i = 0; i < node->children.size(); i++)
+			{
+				extractObjectIdPattern(node->children[i], std::string("/[blockId]"), container);
+			}
+		}
+
+		return;
+	}
+
+
+	std::string nodeIdPattern;
+
+	char idBuffer[LineLengthMax];
+	memset(idBuffer, 0x00, sizeof(char) * LineLengthMax);
+	memcpy(idBuffer, nodeId.c_str(), sizeof(char)*nodeId.size());
+	char* word = strtok(idBuffer, " ");
+	bool bNumberPattern = false;
+	while (word != NULL)
+	{
+		std::string stdWord(word);
+		if (stdWord.find("/") != std::string::npos)
+		{
+			if(bNumberPattern)
+				nodeIdPattern += std::string(" /[blockId]");
+			else
+				nodeIdPattern += std::string("/[blockId]");
+
+			break;
+		}
+
+		if (bNumberPattern)
+		{
+			nodeIdPattern += std::string(" # of ");
+			word = strtok(NULL, " ");
+			bNumberPattern = false;
+		}
+		else
+		{
+			nodeIdPattern += stdWord;
+			bNumberPattern = true;
+		}
+
+		word = strtok(NULL, " ");
+	}
+
+	bool bSamePatternFound = false;
+	Json::Value accumulatedObject(Json::objectValue);
+	for (unsigned int i = 0; i < container.size(); i++)
+	{
+		accumulatedObject = container.get(i, accumulatedObject);
+		if (accumulatedObject["1:idPattern"].asString().compare(nodeIdPattern) == 0 &&
+			accumulatedObject["2:parentIdPattern"].asString().compare(parentIdPattern) == 0)
+		{
+			bSamePatternFound = true;
+			break;
+		}
+	}
+
+	if (bSamePatternFound)
+	{
+		if (!node->children.empty())
+		{
+			for (size_t i = 0; i < node->children.size(); i++)
+			{
+				extractObjectIdPattern(node->children[i], nodeIdPattern, container);
+			}
+		}
+
+		return;
+	}
+		
+
+	Json::Value jsonNode(Json::objectValue);
+
+	jsonNode["1:idPattern"] = nodeIdPattern;
+	jsonNode["2:parentIdPattern"] = parentIdPattern;
+
+	container.append(jsonNode);
+
+	if (!node->children.empty())
+	{
+		for (size_t i = 0; i < node->children.size(); i++)
+		{
+			extractObjectIdPattern(node->children[i], jsonNode["1:idPattern"].asString(), container);
 		}
 	}
 }
+
+void dumpObjectIdPattern(std::vector<RevNode*>& nodes, std::string filePath)
+{
+	Json::Value roots(Json::arrayValue);
+	for (size_t i = 0; i < nodes.size(); i++)
+		extractObjectIdPattern(nodes[i], std::string("block"), roots);
+
+	Json::StyledWriter writer;
+	std::string result = writer.write(roots);
+
+	FILE* file = NULL;
+	file = fopen(filePath.c_str(), "wt");
+	fprintf(file, "%s", result.c_str());
+	fclose(file);
+}
+#endif
 
 AvevaRevReader::AvevaRevReader()
 {
@@ -233,13 +395,24 @@ bool AvevaRevReader::readRawDataFile(std::string& filePath)
 	}
 	fclose(file);
 
+#ifdef TEMPORARY_TEST
+	std::string::size_type dotPosition = filePath.rfind(".");
+	std::string tempPath = filePath.substr(0, dotPosition);
+	std::string hiararchyFileFullPath = tempPath + std::string("_hiararchy.json");
+	dumpHiararchy(createdRootNodes, hiararchyFileFullPath);
+
+	std::string objectIdPatternFileFullPath = tempPath + std::string("_objectIdPattern.json");
+	dumpObjectIdPattern(createdRootNodes, objectIdPatternFileFullPath);
+#endif
+
 	for (size_t i = 0; i < createdRootNodes.size(); i++)
 	{
-		extractGeometryInformation(createdRootNodes[i], container);
+		extractGeometryInformation(createdRootNodes[i], container, containers, bBuildHiararchy);
 
 		delete createdRootNodes[i];
 		createdRootNodes[i] = NULL;
 	}
+	
 	createdRootNodes.clear();
 
 	return true;
@@ -247,7 +420,15 @@ bool AvevaRevReader::readRawDataFile(std::string& filePath)
 
 void AvevaRevReader::clear()
 {
+	if (!container.empty() && !containers.empty())
+	{
+		for (size_t i = 0; i < container.size(); i++)
+			delete container[i];
+	}
+
 	container.clear();
+
+	containers.clear();
 
 	textureContainer.clear();
 }
@@ -651,7 +832,10 @@ void readObstInfo(FILE* file, RevNode* node)
 	readingMode = 0;
 }
 
-void extractGeometryInformation(RevNode* node, std::vector<gaia3d::TrianglePolyhedron*>& container)
+void extractGeometryInformation(RevNode* node,
+								std::vector<gaia3d::TrianglePolyhedron*>& container,
+								std::map<std::string, std::vector<gaia3d::TrianglePolyhedron*>>& containers,
+								bool bBuildHiararchy)
 {
 	if (!node->prims.empty())
 	{
@@ -881,11 +1065,26 @@ void extractGeometryInformation(RevNode* node, std::vector<gaia3d::TrianglePolyh
 			polyhedron->setColorMode(gaia3d::ColorMode::SingleColor);
 			polyhedron->setSingleColor(DefaultColor);
 			container.push_back(polyhedron);
+
+			if (bBuildHiararchy)
+			{
+				RevNode* currentNode = node;
+				while (currentNode != NULL)
+				{
+					std::string key = node->id.substr(1, node->id.size());
+					if (containers.find(key) == containers.end())
+						containers[key] = std::vector<gaia3d::TrianglePolyhedron*>();
+
+					containers[key].push_back(polyhedron);
+
+					currentNode = node->parent;
+				}
+			}
 		}
 	}
 
 	for (size_t i = 0; i < node->children.size(); i++)
-		extractGeometryInformation(node->children[i], container);
+		extractGeometryInformation(node->children[i], container, containers, bBuildHiararchy);
 }
 
 void tokenizeFloatingNumbers(char buffer[], std::vector<double>& receiver)

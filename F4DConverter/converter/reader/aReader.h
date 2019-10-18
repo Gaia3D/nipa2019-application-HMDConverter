@@ -11,9 +11,7 @@
 class aReader abstract
 {
 public:
-	aReader() {}
-
-	virtual ~aReader()
+	aReader()
 	{
 		unitScaleFactor = 1.0;
 
@@ -22,6 +20,12 @@ public:
 		bCoordinateInfoInjected = false;
 
 		bYAxisUp = false;
+
+		bBuildHiararchy = true;
+	}
+
+	virtual ~aReader()
+	{
 	}
 
 public:
@@ -31,6 +35,8 @@ public:
 
 	virtual std::vector<gaia3d::TrianglePolyhedron*>& getDataContainer() {return container;}
 
+	virtual std::map<std::string, std::vector<gaia3d::TrianglePolyhedron*>>& getMultipleDataContainers() { return containers; }
+
 	virtual std::map<std::string, std::string>& getTextureInfoContainer() { return textureContainer; }
 
 	virtual void setUnitScaleFactor(double factor) { unitScaleFactor = factor; }
@@ -38,6 +44,8 @@ public:
 	virtual void setOffset(double x, double y, double z) { offsetX = x; offsetY = y; offsetZ = z; }
 
 	virtual void setYAxisUp(bool bUp) { bYAxisUp = bUp; }
+
+	virtual void setBuildHiararchy(bool bBuild) { bBuildHiararchy = bBuild; }
 
 	virtual bool doesHasGeoReferencingInfo() { return bHasGeoReferencingInfo; }
 
@@ -51,6 +59,8 @@ public:
 
 protected:
 	std::vector<gaia3d::TrianglePolyhedron*> container;
+
+	std::map<std::string, std::vector<gaia3d::TrianglePolyhedron*>> containers;
 
 	std::map<std::string, std::string> textureContainer;
 
@@ -69,6 +79,10 @@ protected:
 	double lonOrigin, latOrigin;
 
 	bool bCoordinateInfoInjected;
+
+	bool bBuildHiararchy;
+
+protected:
 
 	std::string makeProj4String()
 	{
