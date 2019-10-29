@@ -111,6 +111,7 @@ void readObstInfo(FILE* file, RevNode* node);
 void extractGeometryInformation(RevNode* node,
 								std::vector<gaia3d::TrianglePolyhedron*>& container,
 								std::map<std::string, std::vector<gaia3d::TrianglePolyhedron*>>& containers,
+								std::map<std::string, std::vector<std::string>>& ancestorsOfEachSubGroup,
 								bool bBuildHiararchy);
 void tokenizeFloatingNumbers(char buffer[], std::vector<double>& receiver);
 
@@ -405,9 +406,10 @@ bool AvevaRevReader::readRawDataFile(std::string& filePath)
 	dumpObjectIdPattern(createdRootNodes, objectIdPatternFileFullPath);
 #endif
 
+	bBuildHiararchy = true;
 	for (size_t i = 0; i < createdRootNodes.size(); i++)
 	{
-		extractGeometryInformation(createdRootNodes[i], container, containers, bBuildHiararchy);
+		extractGeometryInformation(createdRootNodes[i], container, containers, ancestorsOfEachSubGroup, bBuildHiararchy);
 
 		delete createdRootNodes[i];
 		createdRootNodes[i] = NULL;
@@ -835,6 +837,7 @@ void readObstInfo(FILE* file, RevNode* node)
 void extractGeometryInformation(RevNode* node,
 								std::vector<gaia3d::TrianglePolyhedron*>& container,
 								std::map<std::string, std::vector<gaia3d::TrianglePolyhedron*>>& containers,
+								std::map<std::string, std::vector<std::string>>& ancestorsOfEachSubGroup,
 								bool bBuildHiararchy)
 {
 	if (!node->prims.empty())
@@ -1071,20 +1074,38 @@ void extractGeometryInformation(RevNode* node,
 				RevNode* currentNode = node;
 				while (currentNode != NULL)
 				{
-					std::string key = node->id.substr(1, node->id.size());
+					std::string key = currentNode->id.substr(0, node->id.size());
+
+					if (key.find(std::string("/")) == std::string::npos || key.find(std::string("/")) != 0)
+					{
+						currentNode = currentNode->parent;
+						continue;
+					}
+
+					key = key.substr(1, key.size() - 1);
+
 					if (containers.find(key) == containers.end())
+					{
 						containers[key] = std::vector<gaia3d::TrianglePolyhedron*>();
+						ancestorsOfEachSubGroup[key] = std::vector<std::string>();
+						RevNode* parent = currentNode->parent;
+						while (parent != NULL)
+						{
+							ancestorsOfEachSubGroup[key].push_back(parent->id.substr(1, parent->id.size()-1));
+							parent = parent->parent;
+						}
+					}
 
 					containers[key].push_back(polyhedron);
 
-					currentNode = node->parent;
+					currentNode = currentNode->parent;
 				}
 			}
 		}
 	}
 
 	for (size_t i = 0; i < node->children.size(); i++)
-		extractGeometryInformation(node->children[i], container, containers, bBuildHiararchy);
+		extractGeometryInformation(node->children[i], container, containers, ancestorsOfEachSubGroup, bBuildHiararchy);
 }
 
 void tokenizeFloatingNumbers(char buffer[], std::vector<double>& receiver)

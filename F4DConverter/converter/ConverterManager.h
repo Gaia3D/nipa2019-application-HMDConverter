@@ -35,6 +35,7 @@ private:
 	bool bUseEpsg;
 	std::string epsgCode;
 	double offsetX, offsetY, offsetZ;
+	std::string projectName;
 
 	std::string inputFolderPath, outputFolderPath;
 
@@ -63,8 +64,6 @@ private:
 	bool writeIndexFile();
 
 	void processDataFiles(std::map<std::string, std::string>& targetFiles);
-
-	bool processDataFile(std::string& filePath, aReader* reader);
 
 	void writeRepresentativeLonLatOfEachData(std::map<std::string, double>& posXs, std::map<std::string, double>& posYs);
 

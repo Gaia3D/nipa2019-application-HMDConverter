@@ -4,6 +4,7 @@
 #include "stdafx.h"
 #include "ConverterManager.h"
 
+#include <direct.h>
 #include <io.h>
 #include <sys/stat.h>
 #include <algorithm>
@@ -165,98 +166,36 @@ bool CConverterManager::processDataFolder()
 		return false;
 	}
 
+	if (!projectName.empty())
+	{
+		outputFolder = outputFolder + std::string("/") + projectName;
+		bool bProjectFolderExist = false;
+		if (_access(outputFolder.c_str(), 0) == 0)
+		{
+			struct stat status;
+			stat(outputFolder.c_str(), &status);
+			if (status.st_mode & S_IFDIR)
+				bProjectFolderExist = true;
+		}
+
+		if (!bProjectFolderExist)
+		{
+			if (_mkdir(outputFolder.c_str()) != 0)
+			{
+				LogWriter::getLogWriter()->addContents(std::string(ERROR_FLAG), false);
+				LogWriter::getLogWriter()->addContents(std::string(CANNOT_CREATE_DIRECTORY), false);
+				LogWriter::getLogWriter()->addContents(outputFolder, true);
+				return false;
+			}
+		}
+
+		outputFolderPath = outputFolder;
+	}
+
 	processDataFiles(targetFiles);
 
 	return true;
 }
-
-/*
-bool CConverterManager::processSingleFile(std::string& filePath)
-{
-	std::string outputFolder = outputFolderPath;
-	bool outputFolderExist = false;
-	if (_access(outputFolder.c_str(), 0) == 0)
-	{
-		struct stat status;
-		stat(outputFolder.c_str(), &status);
-		if (status.st_mode & S_IFDIR)
-			outputFolderExist = true;
-	}
-
-	if (!outputFolderExist)
-	{
-		LogWriter::getLogWriter()->addContents(std::string(ERROR_FLAG), false);
-		LogWriter::getLogWriter()->addContents(std::string(NO_DATA_OR_INVALID_PATH), true);
-		return false;
-	}
-
-	bool bRawDataFileExists = false;
-	if (_access(filePath.c_str(), 0) == 0)
-	{
-		struct stat status;
-		stat(filePath.c_str(), &status);
-		if ((status.st_mode & S_IFDIR) != S_IFDIR)
-			bRawDataFileExists = true;
-	}
-
-	if (!bRawDataFileExists)
-	{
-		LogWriter::getLogWriter()->addContents(std::string(ERROR_FLAG), false);
-		LogWriter::getLogWriter()->addContents(std::string(NO_DATA_OR_INVALID_PATH), true);
-		return false;
-	}
-
-	aReader* reader = ReaderFactory::makeReader(filePath);
-	if (reader == NULL)
-	{
-		LogWriter::getLogWriter()->addContents(std::string(ERROR_FLAG), false);
-		LogWriter::getLogWriter()->addContents(std::string(UNSUPPORTED_FORMAT), true);
-		return false;
-	}
-
-	std::string fileName;
-	std::string::size_type slashPosition = filePath.find_last_of("\\/");
-	if (slashPosition == std::string::npos)
-		fileName = filePath;
-	else
-		fileName = filePath.substr(slashPosition + 1, filePath.length() - slashPosition - 1);
-
-	reader->setUnitScaleFactor(unitScaleFactor);
-
-	if (!processDataFile(filePath, reader))
-	{
-		LogWriter::getLogWriter()->addContents(filePath, true);
-		delete reader;
-		processor->clear();
-		return false;
-	}
-
-	delete reader;
-
-	std::string::size_type dotPosition = fileName.rfind(".");
-	std::string fullId = fileName.substr(0, dotPosition);
-	if (!idPrefix.empty())
-		fullId = idPrefix + fullId;
-
-	if (!idSuffix.empty())
-		fullId += idSuffix;
-
-	processor->addAttribute(std::string(F4DID), fullId);
-
-	F4DWriter writer(processor);
-	writer.setWriteFolder(outputFolder);
-	if (!writer.write())
-	{
-		LogWriter::getLogWriter()->addContents(filePath, true);
-		processor->clear();
-		return false;
-	}
-
-	processor->clear();
-
-	return true;
-}
-*/
 
 void CConverterManager::processDataFiles(std::map<std::string, std::string>& targetFiles)
 {
@@ -336,7 +275,6 @@ void CConverterManager::processSingleLoop(std::map<std::string, std::string>& ta
 	std::map<std::string, std::string>::iterator iter = targetFiles.begin();
 	for (; iter != targetFiles.end(); iter++)
 	{
-		// 1. convert raw data files repectively
 		std::string dataFile = iter->first;
 		std::string dataFileFullPath = iter->second;
 
@@ -344,7 +282,7 @@ void CConverterManager::processSingleLoop(std::map<std::string, std::string>& ta
 		if (reader == NULL)
 			continue;
 
-		printf("===== Start processing this file : %s\n", dataFile.c_str());
+		printf("\n===== Start processing this file : %s\n", dataFile.c_str());
 
 		if(depth == 0)
 			LogWriter::getLogWriter()->numberOfFilesToBeConverted += 1;
@@ -353,23 +291,29 @@ void CConverterManager::processSingleLoop(std::map<std::string, std::string>& ta
 		reader->setOffset(offsetX, offsetY, offsetZ);
 		reader->setYAxisUp(bYAxisUp);
 
-		// 1-1. inject coordinate information into reader before reading
+		// 0. inject coordinate information into reader before reading
 		if (bUseEpsg)
 			reader->injectSrsInfo(epsgCode);
 
 		if (bUseReferenceLonLat)
 			reader->injectOringinInfo(referenceLon, referenceLat);
 
-		if (!processDataFile(dataFileFullPath, reader))
+		// 1. read the original file and build data structure
+		if (!reader->readRawDataFile(dataFileFullPath))
 		{
+			LogWriter::getLogWriter()->addContents(std::string(ERROR_FLAG), false);
+			LogWriter::getLogWriter()->addContents(std::string(CANNOT_LOAD_FILE), false);
 			LogWriter::getLogWriter()->addContents(dataFileFullPath, true);
+			printf("[ERROR]%s\n", std::string(CANNOT_LOAD_FILE).c_str());
 			delete reader;
-			processor->clear();
 			continue;
 		}
 
+		// 1-1. in cases when original files are converted into multiple temporary files.
 		if (!reader->getTemporaryFiles().empty())
 		{
+			printf("===== %zd temporary files are made. Proceeding conversion of temporary files\n", reader->getTemporaryFiles().size());
+
 			// run recursively
 			processSingleLoop(reader->getTemporaryFiles(), centerXs, centerYs, depth + 1);
 
@@ -389,75 +333,163 @@ void CConverterManager::processSingleLoop(std::map<std::string, std::string>& ta
 			continue;
 		}
 
-		// 1.1 change F4D ID with prefix and suffix
-		std::string::size_type dotPosition = dataFile.rfind(".");
-		fullId = dataFile.substr(0, dotPosition);
-		if (!idPrefix.empty())
-			fullId = idPrefix + fullId;
-
-		if (!idSuffix.empty())
-			fullId += idSuffix;
-
-		// 1.2 get representative lon/lat of original dataset
-		if (reader->doesHasGeoReferencingInfo())
+		// 1-2. basic data reading validation
+		bool bGeometryExists = true;
+		if (reader->getDataContainer().empty())
 		{
-			double lon, lat;
-			reader->getGeoReferencingInfo(lon, lat);
-			centerXs[fullId] = lon;
-			centerYs[fullId] = lat;
+			if (reader->getMultipleDataContainers().empty())
+				bGeometryExists = false;
+			else
+			{
+				std::map<std::string, std::vector<gaia3d::TrianglePolyhedron*>>::iterator subItemIter = reader->getMultipleDataContainers().begin();
+				bGeometryExists = false;
+				for (; subItemIter != reader->getMultipleDataContainers().end(); subItemIter++)
+				{
+					if (!iter->second.empty())
+					{
+						bGeometryExists = true;
+						break;
+					}
+				}
+			}
+		}
+
+		if (!bGeometryExists)
+		{
+			LogWriter::getLogWriter()->addContents(std::string(ERROR_FLAG), false);
+			LogWriter::getLogWriter()->addContents(std::string(NO_DATA_IN_RAW_DATA), false);
+			LogWriter::getLogWriter()->addContents(dataFileFullPath, true);
+			printf("[ERROR]%s\n", std::string(NO_DATA_IN_RAW_DATA).c_str());
+			delete reader;
+			continue;
+		}
+
+		// 2. convert to F4D
+		std::map<std::string, std::vector<gaia3d::TrianglePolyhedron*>> targetOriginalGeometries;
+		if (reader->shouldRawDataBeConvertedToMuitiFiles())
+			targetOriginalGeometries = reader->getMultipleDataContainers();
+		else
+		{
+			std::string::size_type dotPosition = dataFile.rfind(".");
+			std::string id = dataFile.substr(0, dotPosition);
+
+			targetOriginalGeometries[id] = reader->getDataContainer();
+		}
+
+		std::map<std::string, std::vector<std::string>>& ancestorsOfEachItem = reader->getAncestorsOfEachSubGroup();
+
+		std::map<std::string, std::vector<gaia3d::TrianglePolyhedron*>>::iterator subItemIter = targetOriginalGeometries.begin();
+		for (; subItemIter != targetOriginalGeometries.end(); subItemIter++)
+		{
+			if (subItemIter->second.empty())
+				continue;
+
+			if (reader->shouldGeometryBeDesroyedOutside())
+				processor->setResponsibilityForDisposing(false);
+
+			fullId = subItemIter->first;
+			if (!idPrefix.empty())
+				fullId = idPrefix + fullId;
+			if (!idSuffix.empty())
+				fullId = fullId + idSuffix;
+
+			if (reader->shouldRawDataBeConvertedToMuitiFiles())
+				printf("\n===== Start processing sub-group : %s\n", fullId.c_str());
+
+			// 2.1 create directories suiting for hiararchy
+			std::string finalOutputFolder = outputFolder;
+			if (ancestorsOfEachItem.find(subItemIter->first) != ancestorsOfEachItem.end())
+			{
+				bool bCanMakeSubDirectory = true;
+				for (size_t i = ancestorsOfEachItem[subItemIter->first].size(); i > 0; i--)
+				{
+					finalOutputFolder = finalOutputFolder + std::string("/F4D_") + idPrefix + ancestorsOfEachItem[subItemIter->first][i-1] + idSuffix;
+
+					bool bFinalOutputFolder = false;
+					if (_access(finalOutputFolder.c_str(), 0) == 0)
+					{
+						struct stat status;
+						stat(finalOutputFolder.c_str(), &status);
+						if (status.st_mode & S_IFDIR)
+							bFinalOutputFolder = true;
+					}
+
+					if (!bFinalOutputFolder)
+					{
+						if (_mkdir(finalOutputFolder.c_str()) != 0)
+						{
+							LogWriter::getLogWriter()->addContents(std::string(ERROR_FLAG), false);
+							LogWriter::getLogWriter()->addContents(std::string(CANNOT_CREATE_DIRECTORY), false);
+							LogWriter::getLogWriter()->addContents(finalOutputFolder, true);
+							bCanMakeSubDirectory = false;
+							break;
+						}
+					}
+				}
+
+				if (!bCanMakeSubDirectory)
+				{
+					if (reader->shouldRawDataBeConvertedToMuitiFiles())
+						printf("\n===== End processing sub-group : %s\n", fullId.c_str());
+
+					continue;
+				}
+			}
+
+			// 2.2 conversion
+			if (!processor->proceedConversion(subItemIter->second, reader->getTextureInfoContainer()))
+			{
+				LogWriter::getLogWriter()->addContents(std::string(ERROR_FLAG), false);
+				LogWriter::getLogWriter()->addContents(std::string(CONVERSION_FAILURE), false);
+				printf("[ERROR]%s\n", std::string(CONVERSION_FAILURE).c_str());
+				if (reader->shouldRawDataBeConvertedToMuitiFiles())
+					LogWriter::getLogWriter()->addContents(dataFileFullPath + std::string("--") + fullId, true);
+				else
+					LogWriter::getLogWriter()->addContents(dataFileFullPath, true);
+
+				processor->clear();
+
+				if (reader->shouldRawDataBeConvertedToMuitiFiles())
+					printf("\n===== End processing sub-group : %s\n", fullId.c_str());
+
+				continue;
+			}
+
+			// 2.3 get representative lon/lat of original dataset
+			if (reader->doesHasGeoReferencingInfo())
+			{
+				double lon, lat;
+				reader->getGeoReferencingInfo(lon, lat);
+				centerXs[fullId] = lon;
+				centerYs[fullId] = lat;
+			}
+
+			processor->addAttribute(std::string(F4DID), fullId);
+
+			// 2.4 write
+			F4DWriter writer(processor);
+			writer.setWriteFolder(finalOutputFolder);
+			if (!writer.write())
+			{
+				if (reader->shouldRawDataBeConvertedToMuitiFiles())
+					LogWriter::getLogWriter()->addContents(dataFileFullPath + std::string("--") + fullId, true);
+				else
+					LogWriter::getLogWriter()->addContents(dataFileFullPath, true);
+			}
+
+			processor->clear();
+
+			if (reader->shouldRawDataBeConvertedToMuitiFiles())
+				printf("===== End processing sub-group : %s\n", fullId.c_str());
 		}
 
 		delete reader;
 
-		processor->addAttribute(std::string(F4DID), fullId);
-
-		// 2. save the result
-		F4DWriter writer(processor);
-		writer.setWriteFolder(outputFolder);
-		if (!writer.write())
-		{
-			LogWriter::getLogWriter()->addContents(dataFileFullPath, true);
-			processor->clear();
-			continue;
-		}
-
-		// 3. processor clear
-		processor->clear();
-		if(depth == 0)
+		if (depth == 0)
 			LogWriter::getLogWriter()->numberOfFilesConverted += 1;
+
+		printf("===== End processing this file : %s\n", dataFile.c_str());
 	}
-}
-
-bool CConverterManager::processDataFile(std::string& filePath, aReader* reader)
-{
-	if (!reader->readRawDataFile(filePath))
-	{
-		LogWriter::getLogWriter()->addContents(std::string(ERROR_FLAG), false);
-		LogWriter::getLogWriter()->addContents(std::string(CANNOT_LOAD_FILE), false);
-		printf("[ERROR]%s\n", std::string(CANNOT_LOAD_FILE).c_str());
-		return false;
-	}
-
-	if (!reader->getTemporaryFiles().empty())
-		return true;
-
-	if (reader->getDataContainer().size() == 0)
-	{
-		LogWriter::getLogWriter()->addContents(std::string(ERROR_FLAG), false);
-		LogWriter::getLogWriter()->addContents(std::string(NO_DATA_IN_RAW_DATA), false);
-		printf("[ERROR]%s\n", std::string(NO_DATA_IN_RAW_DATA).c_str());
-		return false;
-	}
-
-	if(!processor->proceedConversion(reader->getDataContainer(), reader->getTextureInfoContainer()))
-	{
-		LogWriter::getLogWriter()->addContents(std::string(ERROR_FLAG), false);
-		LogWriter::getLogWriter()->addContents(std::string(CONVERSION_FAILURE), false);
-		printf("[ERROR]%s\n", std::string(CONVERSION_FAILURE).c_str());
-		return false;
-	}
-
-	return true;
 }
 
 bool CConverterManager::setProcessConfiguration(std::map<std::string, std::string>& arguments)
@@ -554,6 +586,9 @@ bool CConverterManager::setProcessConfiguration(std::map<std::string, std::strin
 
 		if (arguments.find(OffsetZ) != arguments.end())
 			offsetY = std::stod(arguments[OffsetZ]);
+
+		if (arguments.find(ProjectName) != arguments.end())
+			projectName = arguments[ProjectName];
 	}
 	else
 		bConversion = false;

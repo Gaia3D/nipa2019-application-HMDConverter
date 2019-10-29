@@ -57,6 +57,12 @@ public:
 
 	virtual std::map<std::string, std::string>& getTemporaryFiles() { return temporaryFiles; }
 
+	virtual bool shouldGeometryBeDesroyedOutside() { return (!container.empty() && !containers.empty()); }
+
+	virtual bool shouldRawDataBeConvertedToMuitiFiles() { return !containers.empty(); }
+
+	virtual std::map<std::string, std::vector<std::string>>& getAncestorsOfEachSubGroup() { return ancestorsOfEachSubGroup; }
+
 protected:
 	std::vector<gaia3d::TrianglePolyhedron*> container;
 
@@ -81,6 +87,8 @@ protected:
 	bool bCoordinateInfoInjected;
 
 	bool bBuildHiararchy;
+
+	std::map<std::string, std::vector<std::string>> ancestorsOfEachSubGroup;
 
 protected:
 

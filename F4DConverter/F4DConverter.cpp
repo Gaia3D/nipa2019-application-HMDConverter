@@ -215,6 +215,13 @@ bool extractArguments(int argc, wchar_t* argv[], std::map<std::string, std::stri
 				i++;
 				continue;
 			}
+
+			if (tokens[i] == std::wstring(ProjectNameW))
+			{
+				arguments[ProjectName] = gaia3d::StringUtility::convertWideStringToUtf8(tokens[i + 1]);
+				i++;
+				continue;
+			}
 		}
 		else
 		{
@@ -520,6 +527,25 @@ bool extractArguments(int argc, wchar_t* argv[], std::map<std::string, std::stri
 		}
 	}
 
+	if (arguments.find(ProjectName) != arguments.end())
+	{
+		// , \ / : * ? " < > |  can't be used in the string of project name
+		if (arguments[ProjectName].find(std::string(",")) != std::string::npos ||
+			arguments[ProjectName].find(std::string("\\")) != std::string::npos ||
+			arguments[ProjectName].find(std::string("/")) != std::string::npos || 
+			arguments[ProjectName].find(std::string(":")) != std::string::npos || 
+			arguments[ProjectName].find(std::string("*")) != std::string::npos || 
+			arguments[ProjectName].find(std::string("?")) != std::string::npos || 
+			arguments[ProjectName].find(std::string("\"")) != std::string::npos || 
+			arguments[ProjectName].find(std::string("<")) != std::string::npos || 
+			arguments[ProjectName].find(std::string(">")) != std::string::npos || 
+			arguments[ProjectName].find(std::string("|")) != std::string::npos )
+		{
+			printf("[ERROR][Invalid Arguments] One of characters [ , \\ / : * ? \" < > | ] can't be used in project name : %s.\n", arguments[ProjectName].c_str());
+			return false;
+		}
+	}
+
 	return true;
 }
 #else
@@ -707,6 +733,13 @@ bool extractArguments(int argc, char* argv[], std::map<std::string, std::string>
 			if (tokens[i] == std::string(OffsetZ))
 			{
 				arguments[OffsetZ] = tokens[i + 1];
+				i++;
+				continue;
+			}
+
+			if (tokens[i] == std::string(ProjectName))
+			{
+				arguments[ProjectName] = tokens[i + 1];
 				i++;
 				continue;
 			}
@@ -903,6 +936,25 @@ bool extractArguments(int argc, char* argv[], std::map<std::string, std::string>
 		catch (const std::out_of_range& error)
 		{
 			std::string errorMessage = error.what();
+			return false;
+		}
+	}
+
+	if (arguments.find(ProjectName) != arguments.end())
+	{
+		// , \ / : * ? " < > |  can't be used in the string of project name
+		if (arguments[ProjectName].find(std::string(",")) != std::string::npos ||
+			arguments[ProjectName].find(std::string("\\")) != std::string::npos ||
+			arguments[ProjectName].find(std::string("/")) != std::string::npos ||
+			arguments[ProjectName].find(std::string(":")) != std::string::npos ||
+			arguments[ProjectName].find(std::string("*")) != std::string::npos ||
+			arguments[ProjectName].find(std::string("?")) != std::string::npos ||
+			arguments[ProjectName].find(std::string("\"")) != std::string::npos ||
+			arguments[ProjectName].find(std::string("<")) != std::string::npos ||
+			arguments[ProjectName].find(std::string(">")) != std::string::npos ||
+			arguments[ProjectName].find(std::string("|")) != std::string::npos)
+		{
+			printf("[ERROR][Invalid Arguments] One of characters [ , \\ / : * ? \" < > | ] can't be used in project name : %s.\n", arguments[ProjectName].c_str());
 			return false;
 		}
 	}

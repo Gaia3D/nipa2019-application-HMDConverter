@@ -327,6 +327,8 @@ void ConversionProcessor::clear()
 
 	netSurfaceTextureWidth.clear();
 	netSurfaceTextureHeight.clear();
+
+	bResponsibleDisposingGeometries = false;
 }
 
 void ConversionProcessor::changeSceneControlVariables()
