@@ -67,7 +67,9 @@ private:
 
 	void writeRepresentativeLonLatOfEachData(std::map<std::string, double>& posXs, std::map<std::string, double>& posYs);
 
-	void processSingleLoop(std::map<std::string, std::string>& targetFiles, std::map<std::string, double>& centerXs, std::map<std::string, double>& centerYs, unsigned char depth);
+	void writeRelativePathOfEachData(std::map<std::string, std::string>& relativePaths);
+
+	void processSingleLoop(std::map<std::string, std::string>& targetFiles, std::map<std::string, double>& centerXs, std::map<std::string, double>& centerYs, std::map<std::string, std::string>& relativePaths, unsigned char depth);
 };
 
 

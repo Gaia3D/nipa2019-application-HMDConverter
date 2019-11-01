@@ -246,13 +246,17 @@ void CConverterManager::processDataFiles(std::map<std::string, std::string>& tar
 	//processor->setLeafSpatialOctreeSize(422.0f);
 
 	std::map<std::string, double> centerXs, centerYs;
-	processSingleLoop(targetFiles, centerXs, centerYs, 0);
+	std::map<std::string, std::string> relativePaths;
+	processSingleLoop(targetFiles, centerXs, centerYs, relativePaths, 0);
 
 	// save representative lon / lat of F4D if a reference file exists
 	if (!centerXs.empty() && !centerYs.empty())
 	{
 		writeRepresentativeLonLatOfEachData(centerXs, centerYs);
 	}
+
+	// save relative path of each F4D
+	writeRelativePathOfEachData(relativePaths);
 }
 
 bool CConverterManager::writeIndexFile()
@@ -267,6 +271,7 @@ bool CConverterManager::writeIndexFile()
 void CConverterManager::processSingleLoop(std::map<std::string, std::string>& targetFiles,
 										std::map<std::string, double>& centerXs,
 										std::map<std::string, double>& centerYs,
+										std::map<std::string, std::string>& relativePaths,
 										unsigned char depth)
 {
 	std::string outputFolder = outputFolderPath;
@@ -315,7 +320,7 @@ void CConverterManager::processSingleLoop(std::map<std::string, std::string>& ta
 			printf("===== %zd temporary files are made. Proceeding conversion of temporary files\n", reader->getTemporaryFiles().size());
 
 			// run recursively
-			processSingleLoop(reader->getTemporaryFiles(), centerXs, centerYs, depth + 1);
+			processSingleLoop(reader->getTemporaryFiles(), centerXs, centerYs, relativePaths, depth + 1);
 
 			// delete temporary files
 			std::map<std::string, std::string>::iterator tmpFileIter = reader->getTemporaryFiles().begin();
@@ -398,12 +403,14 @@ void CConverterManager::processSingleLoop(std::map<std::string, std::string>& ta
 
 			// 2.1 create directories suiting for hiararchy
 			std::string finalOutputFolder = outputFolder;
+			std::string relativeOutputFolder;
 			if (ancestorsOfEachItem.find(subItemIter->first) != ancestorsOfEachItem.end())
 			{
 				bool bCanMakeSubDirectory = true;
 				for (size_t i = ancestorsOfEachItem[subItemIter->first].size(); i > 0; i--)
 				{
-					finalOutputFolder = finalOutputFolder + std::string("/F4D_") + idPrefix + ancestorsOfEachItem[subItemIter->first][i-1] + idSuffix;
+					relativeOutputFolder = relativeOutputFolder + std::string("/F4D_") + idPrefix + ancestorsOfEachItem[subItemIter->first][i - 1] + idSuffix;
+					finalOutputFolder = outputFolder + relativeOutputFolder;
 
 					bool bFinalOutputFolder = false;
 					if (_access(finalOutputFolder.c_str(), 0) == 0)
@@ -434,6 +441,8 @@ void CConverterManager::processSingleLoop(std::map<std::string, std::string>& ta
 
 					continue;
 				}
+
+
 			}
 
 			// 2.2 conversion
@@ -455,15 +464,6 @@ void CConverterManager::processSingleLoop(std::map<std::string, std::string>& ta
 				continue;
 			}
 
-			// 2.3 get representative lon/lat of original dataset
-			if (reader->doesHasGeoReferencingInfo())
-			{
-				double lon, lat;
-				reader->getGeoReferencingInfo(lon, lat);
-				centerXs[fullId] = lon;
-				centerYs[fullId] = lat;
-			}
-
 			processor->addAttribute(std::string(F4DID), fullId);
 
 			// 2.4 write
@@ -475,6 +475,19 @@ void CConverterManager::processSingleLoop(std::map<std::string, std::string>& ta
 					LogWriter::getLogWriter()->addContents(dataFileFullPath + std::string("--") + fullId, true);
 				else
 					LogWriter::getLogWriter()->addContents(dataFileFullPath, true);
+			}
+			else
+			{
+				// 2.3 get representative lon/lat of original dataset
+				if (reader->doesHasGeoReferencingInfo())
+				{
+					double lon, lat;
+					reader->getGeoReferencingInfo(lon, lat);
+					centerXs[fullId] = lon;
+					centerYs[fullId] = lat;
+				}
+
+				relativePaths[fullId] = relativeOutputFolder;
 			}
 
 			processor->clear();
@@ -726,6 +739,34 @@ void CConverterManager::writeRepresentativeLonLatOfEachData(std::map<std::string
 	Json::StyledWriter writer;
 	std::string documentContent = writer.write(arrayNode);
 	std::string lonLatFileFullPath = outputFolderPath + std::string("/lonsLats.json");
+	FILE* file = NULL;
+	file = fopen(lonLatFileFullPath.c_str(), "wt");
+	fprintf(file, "%s", documentContent.c_str());
+	fclose(file);
+}
+
+void CConverterManager::writeRelativePathOfEachData(std::map<std::string, std::string>& relativePaths)
+{
+	Json::Value arrayNode(Json::arrayValue);
+
+	std::map<std::string, std::string>::iterator iter = relativePaths.begin();
+	for (; iter != relativePaths.end(); iter++)
+	{
+		Json::Value f4d(Json::objectValue);
+
+		// data_key
+		std::string dataKey = iter->first;
+		f4d["data_key"] = dataKey;
+
+		// relative path
+		f4d["relativePath"] = iter->second;
+
+		arrayNode.append(f4d);
+	}
+
+	Json::StyledWriter writer;
+	std::string documentContent = writer.write(arrayNode);
+	std::string lonLatFileFullPath = outputFolderPath + std::string("/relativePaths.json");
 	FILE* file = NULL;
 	file = fopen(lonLatFileFullPath.c_str(), "wt");
 	fprintf(file, "%s", documentContent.c_str());
