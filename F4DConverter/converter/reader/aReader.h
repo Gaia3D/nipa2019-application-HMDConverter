@@ -21,7 +21,7 @@ public:
 
 		bYAxisUp = false;
 
-		bBuildHiararchy = true;
+		bBuildHiararchy = false;
 	}
 
 	virtual ~aReader()
@@ -63,6 +63,8 @@ public:
 
 	virtual std::map<std::string, std::vector<std::string>>& getAncestorsOfEachSubGroup() { return ancestorsOfEachSubGroup; }
 
+	virtual std::map<std::string, bool>& getSplitFilter() { return splitFilter; }
+
 protected:
 	std::vector<gaia3d::TrianglePolyhedron*> container;
 
@@ -89,6 +91,8 @@ protected:
 	bool bBuildHiararchy;
 
 	std::map<std::string, std::vector<std::string>> ancestorsOfEachSubGroup;
+
+	std::map<std::string, bool> splitFilter;
 
 protected:
 

@@ -295,6 +295,8 @@ void CConverterManager::processSingleLoop(std::map<std::string, std::string>& ta
 		reader->setUnitScaleFactor(unitScaleFactor);
 		reader->setOffset(offsetX, offsetY, offsetZ);
 		reader->setYAxisUp(bYAxisUp);
+		if (!splitFilter.empty())
+			reader->getSplitFilter().insert(splitFilter.begin(), splitFilter.end());
 
 		// 0. inject coordinate information into reader before reading
 		if (bUseEpsg)
@@ -602,6 +604,20 @@ bool CConverterManager::setProcessConfiguration(std::map<std::string, std::strin
 
 		if (arguments.find(ProjectName) != arguments.end())
 			projectName = arguments[ProjectName];
+
+		if (arguments.find(SplitFilter) != arguments.end())
+		{
+			char filters[4096];
+			memset(filters, 0x00, sizeof(char) * 4096);
+			strcpy(filters, arguments[SplitFilter].c_str());
+
+			char* token = strtok(filters, ",");
+			while (token != NULL)
+			{
+				splitFilter[std::string(token)] = false;
+				token = strtok(NULL, ",");
+			}
+		}
 	}
 	else
 		bConversion = false;
@@ -694,6 +710,11 @@ void CConverterManager::collectTargetFiles(std::string& inputFolder, std::map<st
 			std::string tempDataFile = dataFile;
 			std::transform(tempDataFile.begin(), tempDataFile.end(), tempDataFile.begin(), towlower);
 			if (tempDataFile.find("_hull.rev") != std::string::npos)
+			{
+				result = _findnext(handle, &fd);
+				continue;
+			}
+			if (tempDataFile.find("_holesplit.rev") != std::string::npos)
 			{
 				result = _findnext(handle, &fd);
 				continue;

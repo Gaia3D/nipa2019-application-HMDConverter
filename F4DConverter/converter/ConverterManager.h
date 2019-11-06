@@ -36,6 +36,7 @@ private:
 	std::string epsgCode;
 	double offsetX, offsetY, offsetZ;
 	std::string projectName;
+	std::map<std::string, bool> splitFilter;
 
 	std::string inputFolderPath, outputFolderPath;
 

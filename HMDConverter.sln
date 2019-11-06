@@ -5,6 +5,8 @@ VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "F4DConverter", "F4DConverter\F4DConverter.vcxproj", "{AC7A0C56-87DE-401F-838A-F717CA9CD53F}"
 EndProject
+Project("{54435603-DBB4-11D2-8724-00A0C9A8B90C}") = "SetupHMDConverter", "SetupHMDConverter\SetupHMDConverter.vdproj", "{987BECBC-AA31-4FCB-B34E-68DB65A2DB4C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -21,6 +23,10 @@ Global
 		{AC7A0C56-87DE-401F-838A-F717CA9CD53F}.Release|x64.Build.0 = Release|x64
 		{AC7A0C56-87DE-401F-838A-F717CA9CD53F}.Release|x86.ActiveCfg = Release|Win32
 		{AC7A0C56-87DE-401F-838A-F717CA9CD53F}.Release|x86.Build.0 = Release|Win32
+		{987BECBC-AA31-4FCB-B34E-68DB65A2DB4C}.Debug|x64.ActiveCfg = Debug
+		{987BECBC-AA31-4FCB-B34E-68DB65A2DB4C}.Debug|x86.ActiveCfg = Debug
+		{987BECBC-AA31-4FCB-B34E-68DB65A2DB4C}.Release|x64.ActiveCfg = Release
+		{987BECBC-AA31-4FCB-B34E-68DB65A2DB4C}.Release|x86.ActiveCfg = Release
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

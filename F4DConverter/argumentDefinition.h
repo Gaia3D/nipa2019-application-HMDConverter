@@ -18,6 +18,7 @@
 #define OffsetYW			L"#offsetY"
 #define OffsetZW			L"#offsetZ"
 #define ProjectNameW		L"#projectName"
+#define SplitFilterW		L"#splitFilter"
 
 #define ProgramPath		"programPath"
 #define InputFolder		"#inputFolder"
@@ -38,3 +39,4 @@
 #define OffsetY			"#offsetY"
 #define OffsetZ			"#offsetZ"
 #define ProjectName		"#projectName"
+#define SplitFilter		"#splitFilter"

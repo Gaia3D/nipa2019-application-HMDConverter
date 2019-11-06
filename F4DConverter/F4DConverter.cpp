@@ -222,6 +222,13 @@ bool extractArguments(int argc, wchar_t* argv[], std::map<std::string, std::stri
 				i++;
 				continue;
 			}
+
+			if (tokens[i] == std::wstring(SplitFilterW))
+			{
+				arguments[SplitFilter] = gaia3d::StringUtility::convertWideStringToUtf8(tokens[i + 1]);
+				i++;
+				continue;
+			}
 		}
 		else
 		{
@@ -740,6 +747,13 @@ bool extractArguments(int argc, char* argv[], std::map<std::string, std::string>
 			if (tokens[i] == std::string(ProjectName))
 			{
 				arguments[ProjectName] = tokens[i + 1];
+				i++;
+				continue;
+			}
+
+			if (tokens[i] == std::wstring(SplitFilter))
+			{
+				arguments[SplitFilter] = tokens[i + 1];
 				i++;
 				continue;
 			}

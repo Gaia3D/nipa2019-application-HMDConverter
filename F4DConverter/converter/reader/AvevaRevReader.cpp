@@ -11,6 +11,14 @@ class RevSubSurface
 {
 public:
 	std::vector<gaia3d::Vertex*> vertices;
+
+	void clear()
+	{
+		for (size_t i = 0; i < vertices.size(); i++)
+			delete vertices[i];
+
+		vertices.clear();
+	}
 };
 
 class RevSurface
@@ -23,6 +31,17 @@ public:
 		{
 			delete subSurfaces[i];
 			subSurfaces[i] = NULL;
+		}
+
+		subSurfaces.clear();
+	}
+
+	void clear()
+	{
+		for (size_t i = 0; i < subSurfaces.size(); i++)
+		{
+			subSurfaces[i]->clear();
+			delete subSurfaces[i];
 		}
 
 		subSurfaces.clear();
@@ -51,6 +70,17 @@ public:
 		surfaces.clear();
 	}
 
+	void clear()
+	{
+		for (size_t i = 0; i < surfaces.size(); i++)
+		{
+			surfaces[i]->clear();
+			delete surfaces[i];
+		}
+
+		surfaces.clear();
+	}
+
 	enum PRIM_TYPE {NONE, UNKNOWN, BROKEN, TYPE1, TYPE2, TYPE3, TYPE4, TYPE5, TYPE6, TYPE7, TYPE8, TYPE9, TYPE10, TYPE11};
 
 public:
@@ -71,7 +101,13 @@ public:
 
 	~RevNode()
 	{
-		clearChildren();
+		for (size_t i = 0; i < children.size(); i++)
+		{
+			delete children[i];
+			children[i] = NULL;
+		}
+
+		children.clear();
 
 		for (size_t i = 0; i < prims.size(); i++)
 		{
@@ -82,15 +118,23 @@ public:
 		prims.clear();
 	}
 
-	void clearChildren()
+	void clear()
 	{
 		for (size_t i = 0; i < children.size(); i++)
 		{
+			children[i]->clear();
 			delete children[i];
-			children[i] = NULL;
 		}
 
 		children.clear();
+
+		for (size_t i = 0; i < prims.size(); i++)
+		{
+			prims[i]->clear();
+			delete prims[i];
+		}
+
+		prims.clear();
 	}
 
 public:
@@ -106,13 +150,16 @@ public:
 };
 
 bool createNode(FILE* file, RevNode*& rootNode, RevNode*& currentNode, std::vector<RevNode*>& createdRootNodes);
-void readPrimInfo(FILE* file, RevNode* node);
+bool readPrimInfo(FILE* file, RevNode* node);
 void readObstInfo(FILE* file, RevNode* node);
+void setupContainers(std::vector<RevNode*>& nodes,
+					std::map<std::string, bool>& splitFilter,
+					bool bBuibBuildHiararchy,
+					std::map<std::string, std::vector<gaia3d::TrianglePolyhedron*>>& containers,
+					std::map<std::string, std::vector<std::string>>&  ancestorsOfEachSubGroup);
 void extractGeometryInformation(RevNode* node,
 								std::vector<gaia3d::TrianglePolyhedron*>& container,
-								std::map<std::string, std::vector<gaia3d::TrianglePolyhedron*>>& containers,
-								std::map<std::string, std::vector<std::string>>& ancestorsOfEachSubGroup,
-								bool bBuildHiararchy);
+								std::map<std::string, std::vector<gaia3d::TrianglePolyhedron*>>& containers);
 void tokenizeFloatingNumbers(char buffer[], std::vector<double>& receiver);
 
 #define LineLengthMax 1024
@@ -358,10 +405,10 @@ bool AvevaRevReader::readRawDataFile(std::string& filePath)
 			if (!createNode(file, rootNode, currentNode, createdRootNodes))
 			{
 				for (size_t i = 0; i < createdRootNodes.size(); i++)
+				{
+					createdRootNodes[i]->clear();
 					delete createdRootNodes[i];
-
-				if (currentNode != NULL)
-					delete currentNode;
+				}
 
 				fclose(file);
 
@@ -384,7 +431,18 @@ bool AvevaRevReader::readRawDataFile(std::string& filePath)
 
 		if (aLine.find(primTag) != std::string::npos)  // meet a geometry info
 		{
-			readPrimInfo(file, currentNode);
+			if (!readPrimInfo(file, currentNode))
+			{
+				for (size_t i = 0; i < createdRootNodes.size(); i++)
+				{
+					createdRootNodes[i]->clear();
+					delete createdRootNodes[i];
+				}
+
+				fclose(file);
+
+				return false;
+			}
 			continue;
 		}
 
@@ -407,9 +465,26 @@ bool AvevaRevReader::readRawDataFile(std::string& filePath)
 #endif
 
 	bBuildHiararchy = true;
+
+	if (!splitFilter.empty() || bBuildHiararchy)
+		setupContainers(createdRootNodes, splitFilter, bBuildHiararchy, containers, ancestorsOfEachSubGroup);
+
+	if (!splitFilter.empty() && containers.empty())
+	{
+		for (size_t i = 0; i < createdRootNodes.size(); i++)
+		{
+			delete createdRootNodes[i];
+			createdRootNodes[i] = NULL;
+		}
+
+		createdRootNodes.clear();
+
+		return true;
+	}
+
 	for (size_t i = 0; i < createdRootNodes.size(); i++)
 	{
-		extractGeometryInformation(createdRootNodes[i], container, containers, ancestorsOfEachSubGroup, bBuildHiararchy);
+		extractGeometryInformation(createdRootNodes[i], container, containers);
 
 		delete createdRootNodes[i];
 		createdRootNodes[i] = NULL;
@@ -446,10 +521,7 @@ bool createNode(FILE* file, RevNode*& rootNode, RevNode*& currentNode, std::vect
 	{
 		if (currentNode != NULL)
 		{
-			printf("[ERROR]Rev node heiararchy broken!!\n");
-			for (size_t i = 0; i < createdRootNodes.size(); i++)
-				delete createdRootNodes[i];
-			delete currentNode;
+			printf("[ERROR]Rev node heiararchy broken!! line number : %zd\n", readLineCount);
 
 			readingMode = 0;
 			return false;
@@ -462,9 +534,7 @@ bool createNode(FILE* file, RevNode*& rootNode, RevNode*& currentNode, std::vect
 	{
 		if (currentNode == NULL)
 		{
-			printf("[ERROR]Rev node heiararchy broken!!\n");
-			for (size_t i = 0; i < createdRootNodes.size(); i++)
-				delete createdRootNodes[i];
+			printf("[ERROR]Rev node heiararchy broken!! line number : %zd\n", readLineCount);
 
 			readingMode = 0;
 			return false;
@@ -492,7 +562,7 @@ bool createNode(FILE* file, RevNode*& rootNode, RevNode*& currentNode, std::vect
 	return true;
 }
 
-void readPrimInfo(FILE* file, RevNode* node)
+bool readPrimInfo(FILE* file, RevNode* node)
 {
 	readingMode = 2;
 
@@ -505,7 +575,8 @@ void readPrimInfo(FILE* file, RevNode* node)
 	if (token == NULL)
 	{
 		readingMode = 0;
-		return;
+		printf("[ERROR]can't read prim type. line number : %zd\n", readLineCount);
+		return false;
 	}
 
 	std::string aPrimType = std::string(token);
@@ -546,7 +617,7 @@ void readPrimInfo(FILE* file, RevNode* node)
 	else
 	{
 		printf("[ERROR]Unknown Prim Type : %s, line number : %zd\n", aPrimType.c_str(), readLineCount);
-		system("pause");
+		return false;
 	}
 
 	RevPrim* prim = new RevPrim;
@@ -674,25 +745,25 @@ void readPrimInfo(FILE* file, RevNode* node)
 
 			if (surfaceCount < 1)
 			{
-				printf("[ERROR]Surface Count Not Positive\n");
+				printf("[ERROR]Surface Count Not Positive. line number : %zd\n", readLineCount);
 				prim->primType = RevPrim::PRIM_TYPE::BROKEN;
 				readingMode = 0;
-				return;
+				return false;
 			}
 		}
 		catch (const std::invalid_argument& error)
 		{
 			std::string errorMessage = error.what();
-			printf("[ERROR]Invalid Surface Count : %s.\n", errorMessage.c_str());
+			printf("[ERROR]Surface count is not a Integer Number. %s. line number : %zd\n", errorMessage.c_str(), readLineCount);
 			readingMode = 0;
-			return;
+			return false;
 		}
 		catch (const std::out_of_range& error)
 		{
 			std::string errorMessage = error.what();
-			printf("[ERROR]Invalid Surface Count : %s.\n", errorMessage.c_str());
+			printf("[ERROR]Surface count is out of integer range. %s. line number : %zd\n", errorMessage.c_str(), readLineCount);
 			readingMode = 0;
-			return;
+			return false;
 		}
 
 		// read surfaces
@@ -711,25 +782,25 @@ void readPrimInfo(FILE* file, RevNode* node)
 
 				if (subSurfaceCount < 1)
 				{
-					printf("[ERROR]Sub-surface Count Not Positive\n");
+					printf("[ERROR]Sub-surface Count Not Positive. line number : %zd\n", readLineCount);
 					prim->primType = RevPrim::PRIM_TYPE::BROKEN;
 					readingMode = 0;
-					return;
+					return false;
 				}
 			}
 			catch (const std::invalid_argument& error)
 			{
 				std::string errorMessage = error.what();
-				printf("[ERROR]Invalid Sub-surface Count : %s.\n", errorMessage.c_str());
+				printf("[ERROR]Sub-surface count is not a integer number. %s. line number : %zd\n", errorMessage.c_str(), readLineCount);
 				readingMode = 0;
-				return;
+				return false;
 			}
 			catch (const std::out_of_range& error)
 			{
 				std::string errorMessage = error.what();
-				printf("[ERROR]Invalid Sub-surface Count : %s.\n", errorMessage.c_str());
+				printf("[ERROR]Sub-surface count is out of integer range. %s. line number : %zd\n", errorMessage.c_str(), readLineCount);
 				readingMode = 0;
-				return;
+				return false;
 			}
 
 			RevSubSurface* subSurface = NULL;
@@ -744,15 +815,15 @@ void readPrimInfo(FILE* file, RevNode* node)
 
 					if (pointCount < 1)
 					{
-						printf("[ERROR]Point Count Not Positive\n");
+						printf("[ERROR]Point Count Not Positive. line number : %zd\n", readLineCount);
 						prim->primType = RevPrim::PRIM_TYPE::BROKEN;
 						readingMode = 0;
-						return;
+						return false;
 					}
 
 					if (pointCount < 3)
 					{
-						printf("[WARNING]Surface of point count less than 3\n");
+						printf("[WARNING]Surface of point count less than 3. line number : %zd\n", readLineCount);
 						for (int j = 0; j < pointCount; j++)
 						{
 							readALine(line, file); // abandoned point geometry
@@ -764,16 +835,16 @@ void readPrimInfo(FILE* file, RevNode* node)
 				catch (const std::invalid_argument& error)
 				{
 					std::string errorMessage = error.what();
-					printf("[ERROR]Invalid Point Count : %s.\n", errorMessage.c_str());
+					printf("[ERROR]Point count is not integer. %s. line number : %zd\n", errorMessage.c_str(), readLineCount);
 					readingMode = 0;
-					return;
+					return false;
 				}
 				catch (const std::out_of_range& error)
 				{
 					std::string errorMessage = error.what();
-					printf("[ERROR]Invalid Point Count : %s.\n", errorMessage.c_str());
+					printf("[ERROR]Point count is out of integer range. %s. line number : %zd\n", errorMessage.c_str(), readLineCount);
 					readingMode = 0;
-					return;
+					return false;
 				}
 
 				subSurface = new RevSubSurface;
@@ -785,12 +856,24 @@ void readPrimInfo(FILE* file, RevNode* node)
 
 					readALine(line, file); // point geometry
 					tokenizeFloatingNumbers(line, tokenizedNumbers);
+					if (tokenizedNumbers.size() != 3)
+					{
+						printf("[ERROR]REV grammar broken. line number : %zd\n", readLineCount);
+						delete vertex;
+						return false;
+					}
 					vertex->position.set(tokenizedNumbers[0], tokenizedNumbers[1], tokenizedNumbers[2]);
 					tokenizedNumbers.clear();
 					vertex->position = transMat * (vertex->position);
 
 					readALine(line, file); // point normal
 					tokenizeFloatingNumbers(line, tokenizedNumbers);
+					if (tokenizedNumbers.size() != 3)
+					{
+						printf("[ERROR]REV grammar broken. line number : %zd\n", readLineCount);
+						delete vertex;
+						return false;
+					}
 					vertex->normal.set(tokenizedNumbers[0], tokenizedNumbers[1], tokenizedNumbers[2]);
 					tokenizedNumbers.clear();
 					transMat.applyOnlyRotationOnPoint(vertex->normal);
@@ -805,6 +888,8 @@ void readPrimInfo(FILE* file, RevNode* node)
 	}
 	
 	readingMode = 0;
+
+	return true;
 }
 
 void readObstInfo(FILE* file, RevNode* node)
@@ -834,12 +919,124 @@ void readObstInfo(FILE* file, RevNode* node)
 	readingMode = 0;
 }
 
+void findChildrenToBeConverted(RevNode* node, std::map<std::string, bool>& splitFilter, std::vector<RevNode*>& result)
+{
+	if (splitFilter.empty())
+	{
+		bool bThisNodeIsLeaf = true;
+		for (size_t i = 0; i < node->children.size(); i++)
+		{
+			std::string childrenId = node->children[i]->id;
+			if (childrenId.find(std::string("/")) != std::string::npos && childrenId.find(std::string("/")) == 0)
+			{
+				bThisNodeIsLeaf = false;
+				break;
+			}
+		}
+
+		if (bThisNodeIsLeaf)
+		{
+			result.push_back(node);
+			return;
+		}
+	}
+	else
+	{
+		std::string id = node->id.substr(1, node->id.size() - 1);
+		if (splitFilter.find(id) != splitFilter.end())
+		{
+			result.push_back(node);
+			return;
+		}
+	}
+
+	for (size_t i = 0; i < node->children.size(); i++)
+	{
+		std::string childrenId = node->children[i]->id;
+		if (childrenId.find(std::string("/")) == std::string::npos || childrenId.find(std::string("/")) != 0)
+			continue;
+
+		findChildrenToBeConverted(node->children[i], splitFilter, result);
+	}
+}
+
+void setupContainers(std::vector<RevNode*>& nodes,
+					std::map<std::string, bool>& splitFilter,
+					bool bBuibBuildHiararchy,
+					std::map<std::string, std::vector<gaia3d::TrianglePolyhedron*>>& containers,
+					std::map<std::string, std::vector<std::string>>&  ancestorsOfEachSubGroup)
+{
+	std::vector<RevNode*> foundNodes;
+	for (size_t i = 0; i < nodes.size(); i++)
+	{
+		findChildrenToBeConverted(nodes[i], splitFilter, foundNodes);
+	}
+
+	size_t foundNodeSize = foundNodes.size();
+	if (bBuibBuildHiararchy)
+	{
+		for (size_t i = 0; i < foundNodeSize; i++)
+		{
+			RevNode* currentNode = foundNodes[i];
+			while (currentNode != NULL)
+			{
+				std::string key = currentNode->id.substr(1, currentNode->id.size() - 1);
+				if (containers.find(key) == containers.end())
+				{
+					containers[key] = std::vector<gaia3d::TrianglePolyhedron*>();
+					
+					ancestorsOfEachSubGroup[key] = std::vector<std::string>();
+					RevNode* parent = currentNode->parent;
+					while (parent != NULL)
+					{
+						ancestorsOfEachSubGroup[key].push_back(parent->id.substr(1, parent->id.size() - 1));
+						parent = parent->parent;
+					}
+				}
+
+				currentNode = currentNode->parent;
+			}
+		}
+	}
+	else
+	{
+		for (size_t i = 0; i < foundNodeSize; i++)
+			containers[foundNodes[i]->id.substr(1, foundNodes[i]->id.size())] = std::vector<gaia3d::TrianglePolyhedron*>();
+	}
+}
+
 void extractGeometryInformation(RevNode* node,
 								std::vector<gaia3d::TrianglePolyhedron*>& container,
-								std::map<std::string, std::vector<gaia3d::TrianglePolyhedron*>>& containers,
-								std::map<std::string, std::vector<std::string>>& ancestorsOfEachSubGroup,
-								bool bBuildHiararchy)
+								std::map<std::string, std::vector<gaia3d::TrianglePolyhedron*>>& containers)
 {
+	// before extracting geometries, check if this node is allowed to be converted and
+	// mark container keys
+	std::vector<std::string> containerKeys;
+	if (!containers.empty())
+	{
+		RevNode* currentNode = node;
+		while (currentNode != NULL)
+		{
+			std::string key = currentNode->id.substr(0, currentNode->id.size());
+
+			if (key.find(std::string("/")) == std::string::npos || key.find(std::string("/")) != 0)
+			{
+				currentNode = currentNode->parent;
+				continue;
+			}
+
+			key = key.substr(1, key.size() - 1);
+
+			if (containers.find(key) != containers.end())
+				containerKeys.push_back(key);
+
+			currentNode = currentNode->parent;
+		}
+	}
+
+	if (!containers.empty() && containerKeys.empty())
+		return;
+
 	if (!node->prims.empty())
 	{
 		RevPrim* prim;
@@ -1069,43 +1266,16 @@ void extractGeometryInformation(RevNode* node,
 			polyhedron->setSingleColor(DefaultColor);
 			container.push_back(polyhedron);
 
-			if (bBuildHiararchy)
+			if (!containerKeys.empty())
 			{
-				RevNode* currentNode = node;
-				while (currentNode != NULL)
-				{
-					std::string key = currentNode->id.substr(0, node->id.size());
-
-					if (key.find(std::string("/")) == std::string::npos || key.find(std::string("/")) != 0)
-					{
-						currentNode = currentNode->parent;
-						continue;
-					}
-
-					key = key.substr(1, key.size() - 1);
-
-					if (containers.find(key) == containers.end())
-					{
-						containers[key] = std::vector<gaia3d::TrianglePolyhedron*>();
-						ancestorsOfEachSubGroup[key] = std::vector<std::string>();
-						RevNode* parent = currentNode->parent;
-						while (parent != NULL)
-						{
-							ancestorsOfEachSubGroup[key].push_back(parent->id.substr(1, parent->id.size()-1));
-							parent = parent->parent;
-						}
-					}
-
-					containers[key].push_back(polyhedron);
-
-					currentNode = currentNode->parent;
-				}
+				for (size_t j = 0; j < containerKeys.size(); j++)
+					containers[containerKeys[j]].push_back(polyhedron);
 			}
 		}
 	}
 
 	for (size_t i = 0; i < node->children.size(); i++)
-		extractGeometryInformation(node->children[i], container, containers, ancestorsOfEachSubGroup, bBuildHiararchy);
+		extractGeometryInformation(node->children[i], container, containers);
 }
 
 void tokenizeFloatingNumbers(char buffer[], std::vector<double>& receiver)
