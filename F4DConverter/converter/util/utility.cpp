@@ -930,7 +930,8 @@ namespace gaia3d
 	void getSortedRingsByDistFromPointAndMarkedIndices(double** px, double** py,
 												std::vector<size_t>& eachSizeOfRing,
 												double targetx, double targety,
-												std::vector<std::pair<size_t, size_t>>& indices)
+												std::vector<std::pair<size_t, size_t>>& indices,
+												bool bDebug)
 	{
 		//1. sort rings by distance from the reference point to their points
 		// and mark the index of each ring where minimum distance happens 
@@ -961,13 +962,17 @@ namespace gaia3d
 
 			if (sortedRingList.find(sortedPointListByDistance.begin()->first) == sortedRingList.end())
 				sortedRingList[sortedPointListByDistance.begin()->first] = std::vector<std::pair<size_t, size_t>>();
+
 			sortedRingList[sortedPointListByDistance.begin()->first].push_back(std::pair<size_t, size_t>(i, (sortedPointListByDistance.begin()->second)[0]));
 		}
 
 		//2. push sorted result into the output container
 		std::map<double, std::vector<std::pair<size_t, size_t>>>::iterator it = sortedRingList.begin();
 		for (; it != sortedRingList.end(); it++)
-			indices.push_back((it->second)[0]);
+		{
+			for(size_t i = 0; i < it->second.size(); i++)
+				indices.push_back((it->second)[i]);
+		}
 	}
 
 	bool earCutHoleOfPolygon(double** pxs, double** pys, std::vector<size_t>& eachRingPointCount,
@@ -1084,9 +1089,9 @@ namespace gaia3d
 		return true;
 	}
 
-	void GeometryUtility::earCut(double** xs, double** ys, double** zs,
+	bool GeometryUtility::earCut(double** xs, double** ys, double** zs,
 								std::vector<size_t>& eachRingPointCount,
-								std::vector<std::pair<size_t, size_t>>& result)
+								std::vector<std::pair<size_t, size_t>>& result, bool bDebug)
 	{
 		// eachRingPointCount[0] : point count of outer ring
 		// eachRingPointCount[1] ~ eachRingPointCount[n] : point counts of inner rings
@@ -1094,14 +1099,15 @@ namespace gaia3d
 		// xs[m][n-1] : x coordinate of n-th point on m-th inner ring
 		// ys and zs are same with xs
 
+
 		// 0. basic validation
 		if (eachRingPointCount.size() == 0)
-			return;
+			return false;
 
 		if (eachRingPointCount.size() == 1)
 		{
 			if (eachRingPointCount[0] < 3)
-				return;
+				return false;
 
 			std::pair<size_t, size_t> polygonPointIndex;
 			polygonPointIndex.first = 0;
@@ -1111,7 +1117,7 @@ namespace gaia3d
 				result.push_back(polygonPointIndex);
 			}
 
-			return;
+			return true;
 		}
 
 		bool bAllInnerRingsValid = true;
@@ -1124,7 +1130,7 @@ namespace gaia3d
 			}
 		}
 		if (!bAllInnerRingsValid)
-			return;
+			return false;
 		
 		// 1. calculate normal of this polygon
 		gaia3d::Point3D normal, crossProd, prevVector, nextVector;
@@ -1155,7 +1161,7 @@ namespace gaia3d
 		}
 
 		if (!normal.normalize())
-			return;
+			return false;
 
 		// 2. make projected polygon using the polygon normal
 		unsigned char projectionType; // 0 : onto x-y plane, 1 : onto y-z plane, 2 : onto z-x plane
@@ -1297,7 +1303,7 @@ namespace gaia3d
 		std::vector<std::pair<size_t, size_t>> sortedRingsAndTheirLowerLeftPointList;
 		std::vector<size_t> eachInnerRingPointCount;
 		eachInnerRingPointCount.insert(eachInnerRingPointCount.begin(), eachRingPointCount.begin() + 1, eachRingPointCount.end());
-		getSortedRingsByDistFromPointAndMarkedIndices(pxs + 1, pys + 1, eachInnerRingPointCount, minx, miny, sortedRingsAndTheirLowerLeftPointList);
+		getSortedRingsByDistFromPointAndMarkedIndices(pxs + 1, pys + 1, eachInnerRingPointCount, minx, miny, sortedRingsAndTheirLowerLeftPointList, bDebug);
 
 		// 5-3. initialize result container by filling it with outer ring points
 		result.clear();
@@ -1306,40 +1312,65 @@ namespace gaia3d
 
 		// 5-4. ear cut between outer ring and inner rings by turn on marked indices
 		std::vector<size_t>eliminatedHoleIndices;
+		std::map<size_t, size_t> failureStatus;
+		size_t sortedHoleIndexToBeEliminated = 0;
 		while (true)
 		{
-			// 1. find the nearest hole not yet eliminated
-			size_t nearestSortedHoleIndexNotEliminated = 0;
-			for (size_t i = 0; i < sortedRingsAndTheirLowerLeftPointList.size(); i++)
+			// 1. check if this hole is eliminated already
+			bool bEliminated = false;
+			for (size_t i = 0; i < eliminatedHoleIndices.size(); i++)
 			{
-				bool bEliminated = false;
-				
-				for (size_t j = 0; j < eliminatedHoleIndices.size(); j++)
+				if (sortedHoleIndexToBeEliminated == eliminatedHoleIndices[i])
 				{
-					if (sortedRingsAndTheirLowerLeftPointList[i].first == eliminatedHoleIndices[j])
-					{
-						bEliminated = true;
-						break;
-					}
-				}
-
-				if (!bEliminated)
-				{
-					nearestSortedHoleIndexNotEliminated = i;
+					bEliminated = true;
 					break;
 				}
 			}
 
+			if (bEliminated)
+			{
+				sortedHoleIndexToBeEliminated++;
+				sortedHoleIndexToBeEliminated = sortedHoleIndexToBeEliminated%sortedRingsAndTheirLowerLeftPointList.size();
+				continue;
+			}
+
 			// 2. eliminated the selected inner hole
-			size_t targetHoleIndex = sortedRingsAndTheirLowerLeftPointList[nearestSortedHoleIndexNotEliminated].first + 1;
-			size_t targetPointIndexOfTargetHole = sortedRingsAndTheirLowerLeftPointList[nearestSortedHoleIndexNotEliminated].second;
+			size_t targetHoleIndex = sortedRingsAndTheirLowerLeftPointList[sortedHoleIndexToBeEliminated].first + 1;
+			size_t targetPointIndexOfTargetHole = sortedRingsAndTheirLowerLeftPointList[sortedHoleIndexToBeEliminated].second;
 			bool bReverseThisInnerHole = bReverseInnerRings[targetHoleIndex - 1];
 
 			if (earCutHoleOfPolygon(pxs, pys, eachRingPointCount, targetHoleIndex, targetPointIndexOfTargetHole, bReverseThisInnerHole, result))
+			{
 				eliminatedHoleIndices.push_back(targetHoleIndex - 1);
 
-			if (eliminatedHoleIndices.size() == eachInnerRingPointCount.size())
-				break;
+				if (eliminatedHoleIndices.size() == sortedRingsAndTheirLowerLeftPointList.size())
+					break;
+			}
+			else
+			{
+				// check if this failure happens again in same condition
+				if (failureStatus.find(sortedHoleIndexToBeEliminated) == failureStatus.end() ||
+					failureStatus[sortedHoleIndexToBeEliminated] != eliminatedHoleIndices.size())
+				{
+					failureStatus[sortedHoleIndexToBeEliminated] = eliminatedHoleIndices.size();
+				}
+				else
+				{
+					// this means ear cut of this hole failed in same condition
+					for (size_t i = 0; i < eachRingPointCount.size(); i++)
+					{
+						delete[] pxs[i];
+						delete[] pys[i];
+					}
+					delete[] pxs;
+					delete[] pys;
+
+					return false;
+				}
+			}
+
+			sortedHoleIndexToBeEliminated++;
+			sortedHoleIndexToBeEliminated = sortedHoleIndexToBeEliminated%sortedRingsAndTheirLowerLeftPointList.size();
 		}
 
 		// 6. clear
@@ -1350,6 +1381,8 @@ namespace gaia3d
 		}
 		delete[] pxs;
 		delete[] pys;
+
+		return true;
 	}
 
 #ifdef _WIN32

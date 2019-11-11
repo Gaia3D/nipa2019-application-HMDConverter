@@ -464,7 +464,8 @@ bool AvevaRevReader::readRawDataFile(std::string& filePath)
 	dumpObjectIdPattern(createdRootNodes, objectIdPatternFileFullPath);
 #endif
 
-	bBuildHiararchy = true;
+	if(!splitFilter.empty())
+		bBuildHiararchy = true;
 
 	if (!splitFilter.empty() || bBuildHiararchy)
 		setupContainers(createdRootNodes, splitFilter, bBuildHiararchy, containers, ancestorsOfEachSubGroup);
@@ -489,7 +490,7 @@ bool AvevaRevReader::readRawDataFile(std::string& filePath)
 		delete createdRootNodes[i];
 		createdRootNodes[i] = NULL;
 	}
-	
+
 	createdRootNodes.clear();
 
 	return true;
@@ -1005,6 +1006,7 @@ void setupContainers(std::vector<RevNode*>& nodes,
 	}
 }
 
+size_t objectCount = 0;
 void extractGeometryInformation(RevNode* node,
 								std::vector<gaia3d::TrianglePolyhedron*>& container,
 								std::map<std::string, std::vector<gaia3d::TrianglePolyhedron*>>& containers)
@@ -1041,6 +1043,8 @@ void extractGeometryInformation(RevNode* node,
 	{
 		RevPrim* prim;
 		gaia3d::TrianglePolyhedron* polyhedron;
+
+
 		for (size_t i = 0; i < node->prims.size(); i++)
 		{
 			if (node->prims[i]->primType != RevPrim::PRIM_TYPE::TYPE11)
@@ -1048,7 +1052,7 @@ void extractGeometryInformation(RevNode* node,
 
 			prim = node->prims[i];
 			polyhedron = new gaia3d::TrianglePolyhedron;
-			
+
 			RevSurface* surface;
 			for (size_t j = 0; j < prim->surfaces.size(); j++)
 			{
@@ -1092,11 +1096,13 @@ void extractGeometryInformation(RevNode* node,
 							zss[k][m] = subSurface->vertices[m]->position.z;
 						}
 					}
-
+					
+					bool bDebug = false;
+					if (objectCount = 43446 && i == 0 && j == 61)
+						bDebug = true;
 					std::vector<std::pair<size_t, size_t>> earCutResult;
-					gaia3d::GeometryUtility::earCut(xss, yss, zss, pointCountOfAllRings, earCutResult);
-
-					if (earCutResult.empty())
+					if (!gaia3d::GeometryUtility::earCut(xss, yss, zss, pointCountOfAllRings, earCutResult, bDebug) ||
+						earCutResult.empty())
 					{
 						for (size_t k = 0; k < subSurfaceCount; k++)
 						{
@@ -1265,6 +1271,7 @@ void extractGeometryInformation(RevNode* node,
 			polyhedron->setColorMode(gaia3d::ColorMode::SingleColor);
 			polyhedron->setSingleColor(DefaultColor);
 			container.push_back(polyhedron);
+			objectCount++;
 
 			if (!containerKeys.empty())
 			{

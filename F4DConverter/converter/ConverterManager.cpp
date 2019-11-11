@@ -709,12 +709,22 @@ void CConverterManager::collectTargetFiles(std::string& inputFolder, std::map<st
 
 			std::string tempDataFile = dataFile;
 			std::transform(tempDataFile.begin(), tempDataFile.end(), tempDataFile.begin(), towlower);
+			if (tempDataFile.size() != 8)
+			{
+				result = _findnext(handle, &fd);
+				continue;
+			}
 			if (tempDataFile.find("_hull.rev") != std::string::npos)
 			{
 				result = _findnext(handle, &fd);
 				continue;
 			}
 			if (tempDataFile.find("_holesplit.rev") != std::string::npos)
+			{
+				result = _findnext(handle, &fd);
+				continue;
+			}
+			if (tempDataFile.find("_new.rev") != std::string::npos)
 			{
 				result = _findnext(handle, &fd);
 				continue;
