@@ -1044,7 +1044,6 @@ void extractGeometryInformation(RevNode* node,
 		RevPrim* prim;
 		gaia3d::TrianglePolyhedron* polyhedron;
 
-
 		for (size_t i = 0; i < node->prims.size(); i++)
 		{
 			if (node->prims[i]->primType != RevPrim::PRIM_TYPE::TYPE11)
@@ -1098,8 +1097,6 @@ void extractGeometryInformation(RevNode* node,
 					}
 					
 					bool bDebug = false;
-					if (objectCount = 43446 && i == 0 && j == 61)
-						bDebug = true;
 					std::vector<std::pair<size_t, size_t>> earCutResult;
 					if (!gaia3d::GeometryUtility::earCut(xss, yss, zss, pointCountOfAllRings, earCutResult, bDebug) ||
 						earCutResult.empty())

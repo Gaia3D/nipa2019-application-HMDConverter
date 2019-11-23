@@ -1341,7 +1341,7 @@ namespace gaia3d
 
 			if (earCutHoleOfPolygon(pxs, pys, eachRingPointCount, targetHoleIndex, targetPointIndexOfTargetHole, bReverseThisInnerHole, result))
 			{
-				eliminatedHoleIndices.push_back(targetHoleIndex - 1);
+				eliminatedHoleIndices.push_back(sortedHoleIndexToBeEliminated);
 
 				if (eliminatedHoleIndices.size() == sortedRingsAndTheirLowerLeftPointList.size())
 					break;
