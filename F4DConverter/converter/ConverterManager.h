@@ -28,7 +28,7 @@ private:
 	double unitScaleFactor;
 	unsigned char skinLevel;
 	bool bYAxisUp;
-	bool bAlignPostionToCenter;
+	int alignType;
 	bool bUseReferenceLonLat;
 	double referenceLon, referenceLat;
 	int meshType;

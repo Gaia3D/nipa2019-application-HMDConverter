@@ -44,7 +44,7 @@ CConverterManager::CConverterManager()
 
 	bYAxisUp = false;
 
-	bAlignPostionToCenter = false;
+	alignType = -1;
 
 	meshType = 0;
 
@@ -276,8 +276,14 @@ void CConverterManager::processSingleLoop(std::map<std::string, std::string>& ta
 {
 	std::string outputFolder = outputFolderPath;
 
+	enum ResultType { Success = 0, PartiallySuccess = 1, Failure = 2 };
+	std::map<std::string, char> conversionResult;
+	std::map<std::string, std::string> conversionDescription;
+	std::map<std::string, std::string> failedSubGroupList;
+
 	std::string fullId;
 	std::map<std::string, std::string>::iterator iter = targetFiles.begin();
+
 	for (; iter != targetFiles.end(); iter++)
 	{
 		std::string dataFile = iter->first;
@@ -305,6 +311,20 @@ void CConverterManager::processSingleLoop(std::map<std::string, std::string>& ta
 		if (bUseReferenceLonLat)
 			reader->injectOringinInfo(referenceLon, referenceLat);
 
+		switch (alignType)
+		{
+		case 0:
+		{
+			reader->alignToCenter(true);
+		}
+		break;
+		case 1:
+		{
+			reader->alignToBottomCenter(true);
+		}
+		break;
+		}
+
 		// 1. read the original file and build data structure
 		if (!reader->readRawDataFile(dataFileFullPath))
 		{
@@ -312,6 +332,9 @@ void CConverterManager::processSingleLoop(std::map<std::string, std::string>& ta
 			LogWriter::getLogWriter()->addContents(std::string(CANNOT_LOAD_FILE), false);
 			LogWriter::getLogWriter()->addContents(dataFileFullPath, true);
 			printf("[ERROR]%s\n", std::string(CANNOT_LOAD_FILE).c_str());
+			printf("===== End processing this file : %s\n", dataFile.c_str());
+			conversionResult[dataFile] = (char)ResultType::Failure;
+			conversionDescription[dataFile] = std::string("unable to read data file");
 			delete reader;
 			continue;
 		}
@@ -367,6 +390,8 @@ void CConverterManager::processSingleLoop(std::map<std::string, std::string>& ta
 			LogWriter::getLogWriter()->addContents(std::string(NO_DATA_IN_RAW_DATA), false);
 			LogWriter::getLogWriter()->addContents(dataFileFullPath, true);
 			printf("[ERROR]%s\n", std::string(NO_DATA_IN_RAW_DATA).c_str());
+			conversionResult[dataFile] = (char)ResultType::Failure;
+			conversionDescription[dataFile] = std::string("no data in data file");
 			delete reader;
 			continue;
 		}
@@ -439,7 +464,14 @@ void CConverterManager::processSingleLoop(std::map<std::string, std::string>& ta
 				if (!bCanMakeSubDirectory)
 				{
 					if (reader->shouldRawDataBeConvertedToMuitiFiles())
+					{
+						if (failedSubGroupList.find(dataFile) != failedSubGroupList.end())
+							failedSubGroupList[dataFile] = failedSubGroupList[dataFile] + std::string("|");
+
+						failedSubGroupList[dataFile] = failedSubGroupList[dataFile] + subItemIter->first + std::string("(directory creation failure)");
+
 						printf("\n===== End processing sub-group : %s\n", fullId.c_str());
+					}
 
 					continue;
 				}
@@ -454,9 +486,21 @@ void CConverterManager::processSingleLoop(std::map<std::string, std::string>& ta
 				LogWriter::getLogWriter()->addContents(std::string(CONVERSION_FAILURE), false);
 				printf("[ERROR]%s\n", std::string(CONVERSION_FAILURE).c_str());
 				if (reader->shouldRawDataBeConvertedToMuitiFiles())
+				{
 					LogWriter::getLogWriter()->addContents(dataFileFullPath + std::string("--") + fullId, true);
+
+					if (failedSubGroupList.find(dataFile) != failedSubGroupList.end())
+						failedSubGroupList[dataFile] = failedSubGroupList[dataFile] + std::string("|");
+
+					failedSubGroupList[dataFile] = failedSubGroupList[dataFile] + subItemIter->first + std::string("(conversion failure)");
+				}
 				else
+				{
 					LogWriter::getLogWriter()->addContents(dataFileFullPath, true);
+
+					conversionResult[dataFile] = (char)ResultType::Failure;
+					conversionDescription[dataFile] = std::string("conversion failure");
+				}
 
 				processor->clear();
 
@@ -474,9 +518,21 @@ void CConverterManager::processSingleLoop(std::map<std::string, std::string>& ta
 			if (!writer.write())
 			{
 				if (reader->shouldRawDataBeConvertedToMuitiFiles())
+				{
 					LogWriter::getLogWriter()->addContents(dataFileFullPath + std::string("--") + fullId, true);
+
+					if (failedSubGroupList.find(dataFile) != failedSubGroupList.end())
+						failedSubGroupList[dataFile] = failedSubGroupList[dataFile] + std::string("|");
+
+					failedSubGroupList[dataFile] = failedSubGroupList[dataFile] + subItemIter->first + std::string("(writing failure)");
+				}
 				else
+				{
 					LogWriter::getLogWriter()->addContents(dataFileFullPath, true);
+
+					conversionResult[dataFile] = (char)ResultType::Failure;
+					conversionDescription[dataFile] = std::string("writing failure");
+				}
 			}
 			else
 			{
@@ -503,8 +559,34 @@ void CConverterManager::processSingleLoop(std::map<std::string, std::string>& ta
 		if (depth == 0)
 			LogWriter::getLogWriter()->numberOfFilesConverted += 1;
 
+		if (conversionResult.find(dataFile) == conversionResult.end())
+		{
+			if (failedSubGroupList.find(dataFile) == failedSubGroupList.end())
+				conversionResult[dataFile] = (char)ResultType::Success;
+			else
+			{
+				conversionResult[dataFile] = (char)ResultType::PartiallySuccess;
+				conversionDescription[dataFile] = failedSubGroupList[dataFile];
+			}
+		}
+
 		printf("===== End processing this file : %s\n", dataFile.c_str());
 	}
+
+	std::string logFileFullPath = outputFolder + std::string("/resultLog.csv");
+	FILE* logFile = NULL;
+	logFile = fopen(logFileFullPath.c_str(), "wt");
+
+	std::map<std::string, char>::iterator resultIter = conversionResult.begin();
+	for (; resultIter != conversionResult.end(); resultIter++)
+	{
+		fprintf(logFile, "%s,%d", resultIter->first.c_str(), resultIter->second);
+		if (resultIter->second != (char)ResultType::Success)
+			fprintf(logFile, ",%s", conversionDescription[resultIter->first].c_str());
+
+		fprintf(logFile, "\n");
+	}
+	fclose(logFile);
 }
 
 bool CConverterManager::setProcessConfiguration(std::map<std::string, std::string>& arguments)
@@ -564,13 +646,9 @@ bool CConverterManager::setProcessConfiguration(std::map<std::string, std::strin
 			bUseReferenceLonLat = true;
 		}
 
-		if (arguments.find(AlignToCenter) != arguments.end())
+		if (arguments.find(AlignTo) != arguments.end())
 		{
-			if (arguments[AlignToCenter] == std::string("Y") ||
-				arguments[AlignToCenter] == std::string("y"))
-				bAlignPostionToCenter = true;
-			else
-				bAlignPostionToCenter = false;
+			alignType = std::stoi(arguments[AlignTo]);
 		}
 
 		if (arguments.find(Epsg) != arguments.end())
@@ -689,6 +767,7 @@ void CConverterManager::collectTargetFiles(std::string& inputFolder, std::map<st
 			dataFile = gaia3d::StringUtility::convertMultibyteToUtf8(dataFile);
 #endif
 
+#ifdef HMDCUSTOMIZE
 			// WARNING!!! this part is customized for HMD
 			std::string::size_type dotPosition = dataFile.rfind(".");
 			if (dotPosition == std::string::npos)
@@ -709,11 +788,11 @@ void CConverterManager::collectTargetFiles(std::string& inputFolder, std::map<st
 
 			std::string tempDataFile = dataFile;
 			std::transform(tempDataFile.begin(), tempDataFile.end(), tempDataFile.begin(), towlower);
-			if (tempDataFile.size() != 8)
+			/*if (tempDataFile.size() != 8)
 			{
 				result = _findnext(handle, &fd);
 				continue;
-			}
+			}*/
 			if (tempDataFile.find("_hull.rev") != std::string::npos)
 			{
 				result = _findnext(handle, &fd);
@@ -730,6 +809,7 @@ void CConverterManager::collectTargetFiles(std::string& inputFolder, std::map<st
 				continue;
 			}
 			// WARNING end
+#endif
 
 			std::string dataFileFullPath = inputFolder + std::string("/") + dataFile;
 			targetFiles[dataFile] = dataFileFullPath;

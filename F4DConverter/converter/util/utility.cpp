@@ -602,7 +602,21 @@ namespace gaia3d
 				sortedPointIndicesOnAllPointsMap[squaredDist] = std::vector<size_t>();
 				sortedPointIndicesOnThisPolygonMap[squaredDist] = std::vector<size_t>();
 			}
-				
+			/*else
+			{
+				bool bDuplicated = false;
+				for (size_t j = 0; j < sortedPointIndicesOnAllPointsMap[squaredDist].size(); j++)
+				{
+					if ( (sortedPointIndicesOnAllPointsMap[squaredDist])[j] == polygonVertexIndices[i] )
+					{
+						bDuplicated = true;
+						break;
+					}
+				}
+
+				if (bDuplicated)
+					continue;
+			}*/
 
 			sortedPointIndicesOnAllPointsMap[squaredDist].push_back(polygonVertexIndices[i]);
 			sortedPointIndicesOnThisPolygonMap[squaredDist].push_back(i);
@@ -780,8 +794,8 @@ namespace gaia3d
 			{
 				for (size_t i = 0; i < vertexCount; i++)
 				{
-					pxs[i] = xs[i];
-					pys[i] = ys[i];
+					pxs[i] = xs[i] - xs[0];
+					pys[i] = ys[i] - ys[0];
 				}
 			}
 			else
@@ -987,55 +1001,116 @@ namespace gaia3d
 		// outerRing : container which is initially filled with outer ring points and will be filled with ear-cut result finally
 
 		// 1. sort points of outer ring by distance from the ear-cut point of target inner hole
-		std::map<double, std::pair<size_t, size_t>> sortedOuterRingPoints;
-		std::map<double, size_t> sortedOuterRingPointIndices;
+		// with EXCLUSION of duplicated points
+		std::vector<char> duplicationMarker;
+		for (size_t i = 0; i < mergedOuterRing.size(); i++)
+			duplicationMarker.push_back(-1);
+
+		for (size_t i = 0; i < mergedOuterRing.size(); i++)
+		{
+			if (duplicationMarker[i] != -1)
+				continue;
+
+			for (size_t j = i+1; j < mergedOuterRing.size(); j++)
+			{
+				if (duplicationMarker[j] != -1)
+					continue;
+
+				if (mergedOuterRing[i].first == mergedOuterRing[j].first &&
+					mergedOuterRing[i].second == mergedOuterRing[j].second)
+				{
+					duplicationMarker[i] = duplicationMarker[j] = 0;
+				}
+			}
+		}
+		std::map<double, std::vector<std::pair<size_t, size_t>>> sortedOuterRingPoints;
+		std::map<double, std::vector<size_t>> sortedOuterRingPointIndices;
 		double xInnerHoleToBeCut = pxs[indexOfHoleToBeCut][pointIndexOfCut], yInnerHoleToBeCut = pys[indexOfHoleToBeCut][pointIndexOfCut];
 		double xOuterRing, yOuterRing;
 		double squaredDist;
 		for (size_t i = 0; i < mergedOuterRing.size(); i++)
 		{
+			if (duplicationMarker[i] == 0)
+				continue;
+
 			xOuterRing = pxs[mergedOuterRing[i].first][mergedOuterRing[i].second];
 			yOuterRing = pys[mergedOuterRing[i].first][mergedOuterRing[i].second];
 
 			squaredDist = (xOuterRing - xInnerHoleToBeCut)*(xOuterRing - xInnerHoleToBeCut) + (yOuterRing - yInnerHoleToBeCut)*(yOuterRing - yInnerHoleToBeCut);
 
-			sortedOuterRingPoints[squaredDist] = mergedOuterRing[i];
-			sortedOuterRingPointIndices[squaredDist] = i;
+			if (sortedOuterRingPoints.find(squaredDist) == sortedOuterRingPoints.end())
+			{
+				sortedOuterRingPoints[squaredDist] = std::vector<std::pair<size_t, size_t>>();
+				sortedOuterRingPointIndices[squaredDist] = std::vector<size_t>();
+			}
+
+			sortedOuterRingPoints[squaredDist].push_back(mergedOuterRing[i]);
+			sortedOuterRingPointIndices[squaredDist].push_back(i);
 		}
 
 		// 2. find a point on outer ring
 		// where line segment composed of this point and point on the inner hole to be cut NEVER intersects with 
 		// any edges of outer ring and all inner holes.
-		std::map<double, std::pair<size_t, size_t>>::iterator iter1 = sortedOuterRingPoints.begin();
-		std::map<double, size_t>::iterator iter2 = sortedOuterRingPointIndices.begin();
+		std::map<double, std::vector<std::pair<size_t, size_t>>>::iterator iter1 = sortedOuterRingPoints.begin();
+		std::map<double, std::vector<size_t>>::iterator iter2 = sortedOuterRingPointIndices.begin();
 		bool bIntersected;
 		double xToBeCutStart, yToBeCutStart;
 		size_t pointIndexOfOuterRingToBeCut;
 		bool bThisInnerHoleCanBeEarCut = false;
 		for (; iter1 != sortedOuterRingPoints.end(); iter1++, iter2++)
 		{
-			bIntersected = false;
-			xToBeCutStart = pxs[iter1->second.first][iter1->second.second];
-			yToBeCutStart = pys[iter1->second.first][iter1->second.second];
-			for (size_t i = 0; i < eachRingPointCount.size(); i++)
+			
+			for (size_t k = 0; k < iter1->second.size(); k++)
 			{
-				for (size_t j = 0; j < eachRingPointCount[i]; j++)
+				bIntersected = false;
+
+				xToBeCutStart = pxs[(iter1->second)[k].first][(iter1->second)[k].second];
+				yToBeCutStart = pys[(iter1->second)[k].first][(iter1->second)[k].second];
+
+				for (size_t i = 0; i < mergedOuterRing.size(); i++)
 				{
-					if (intersectionTestOnTwoLineSegments(  xToBeCutStart, yToBeCutStart, xInnerHoleToBeCut, yInnerHoleToBeCut,
-															pxs[i][j], pys[i][j], pxs[i][(j+1)%eachRingPointCount[i]], pys[i][(j+1)%eachRingPointCount[i]] ) )
+					size_t holeIndexCur = mergedOuterRing[i].first;
+					size_t pointIndexCur = mergedOuterRing[i].second;
+					size_t holeIndexNext = mergedOuterRing[(i + 1) % mergedOuterRing.size()].first;
+					size_t pointIndexNext = mergedOuterRing[(i + 1) % mergedOuterRing.size()].second;
+
+					if (intersectionTestOnTwoLineSegments(xToBeCutStart, yToBeCutStart, xInnerHoleToBeCut, yInnerHoleToBeCut,
+						pxs[holeIndexCur][pointIndexCur], pys[holeIndexCur][pointIndexCur], pxs[holeIndexNext][pointIndexNext], pys[holeIndexNext][pointIndexNext]))
 					{
 						bIntersected = true;
 						break;
 					}
 				}
+
+				if (!bIntersected)
+				{
+					for (size_t i = 0; i < eachRingPointCount.size(); i++)
+					{
+						for (size_t j = 0; j < eachRingPointCount[i]; j++)
+						{
+							if (intersectionTestOnTwoLineSegments(xToBeCutStart, yToBeCutStart, xInnerHoleToBeCut, yInnerHoleToBeCut,
+								pxs[i][j], pys[i][j], pxs[i][(j + 1) % eachRingPointCount[i]], pys[i][(j + 1) % eachRingPointCount[i]]))
+							{
+								bIntersected = true;
+								break;
+							}
+						}
+
+						if (bIntersected)
+							break;
+					}
+				}
+
+				if (!bIntersected)
+				{
+					pointIndexOfOuterRingToBeCut = (iter2->second)[k];
+					bThisInnerHoleCanBeEarCut = true;
+					break;
+				}
 			}
 
-			if (!bIntersected)
-			{
-				pointIndexOfOuterRingToBeCut = iter2->second;
-				bThisInnerHoleCanBeEarCut = true;
+			if (bThisInnerHoleCanBeEarCut)
 				break;
-			}
 		}
 
 		if (!bThisInnerHoleCanBeEarCut)
@@ -1044,47 +1119,28 @@ namespace gaia3d
 		// 3. merge outer ring and the target inner hole
 		// At this point, mergedOuterRing[pointIndexOfOuterRingToBeCut] is the point of outer ring to be ear cut
 		
-		if (pointIndexOfOuterRingToBeCut == 0)
-		{
-			mergedOuterRing.push_back(mergedOuterRing[0]);
+		std::vector<std::pair<size_t, size_t>> mergedResult;
 
-			if (bReverseInnerRing)
-			{
-				for (size_t i = 0; i < eachRingPointCount[indexOfHoleToBeCut]; i++)
-					mergedOuterRing.push_back(std::pair<size_t, size_t>(indexOfHoleToBeCut, (eachRingPointCount[indexOfHoleToBeCut] + pointIndexOfCut - i) % eachRingPointCount[indexOfHoleToBeCut]));
-			}
-			else
-			{
-				for (size_t i = 0; i < eachRingPointCount[indexOfHoleToBeCut]; i++)
-					mergedOuterRing.push_back(std::pair<size_t, size_t>(indexOfHoleToBeCut, (i + pointIndexOfCut) % eachRingPointCount[indexOfHoleToBeCut]));
-			}
-			mergedOuterRing.push_back(std::pair<size_t, size_t>(indexOfHoleToBeCut, pointIndexOfCut));
+		for (size_t i = 0; i <= pointIndexOfOuterRingToBeCut; i++)
+			mergedResult.push_back(mergedOuterRing[i]);
+
+		if (bReverseInnerRing)
+		{
+			for (size_t i = 0; i < eachRingPointCount[indexOfHoleToBeCut]; i++)
+				mergedResult.push_back(std::pair<size_t, size_t>(indexOfHoleToBeCut, (eachRingPointCount[indexOfHoleToBeCut] + pointIndexOfCut - i) % eachRingPointCount[indexOfHoleToBeCut]));
 		}
 		else
 		{
-			std::vector<std::pair<size_t, size_t>> mergedResult;
-
-			for (size_t i = 0; i <= pointIndexOfOuterRingToBeCut; i++)
-				mergedResult.push_back(mergedOuterRing[i]);
-
-			if (bReverseInnerRing)
-			{
-				for (size_t i = 0; i < eachRingPointCount[indexOfHoleToBeCut]; i++)
-					mergedResult.push_back(std::pair<size_t, size_t>(indexOfHoleToBeCut, (eachRingPointCount[indexOfHoleToBeCut] + pointIndexOfCut - i) % eachRingPointCount[indexOfHoleToBeCut]));
-			}
-			else
-			{
-				for (size_t i = 0; i < eachRingPointCount[indexOfHoleToBeCut]; i++)
-					mergedResult.push_back(std::pair<size_t, size_t>(indexOfHoleToBeCut, (i+pointIndexOfCut)%eachRingPointCount[indexOfHoleToBeCut]));
-			}
-			mergedResult.push_back(std::pair<size_t, size_t>(indexOfHoleToBeCut, pointIndexOfCut));
-
-			for (size_t i = pointIndexOfOuterRingToBeCut; i < mergedOuterRing.size(); i++)
-				mergedResult.push_back(mergedOuterRing[i]);
-
-			mergedOuterRing.clear();
-			mergedOuterRing.insert(mergedOuterRing.begin(), mergedResult.begin(), mergedResult.end());
+			for (size_t i = 0; i < eachRingPointCount[indexOfHoleToBeCut]; i++)
+				mergedResult.push_back(std::pair<size_t, size_t>(indexOfHoleToBeCut, (i+pointIndexOfCut)%eachRingPointCount[indexOfHoleToBeCut]));
 		}
+		mergedResult.push_back(std::pair<size_t, size_t>(indexOfHoleToBeCut, pointIndexOfCut));
+
+		for (size_t i = pointIndexOfOuterRingToBeCut; i < mergedOuterRing.size(); i++)
+			mergedResult.push_back(mergedOuterRing[i]);
+
+		mergedOuterRing.clear();
+		mergedOuterRing.insert(mergedOuterRing.begin(), mergedResult.begin(), mergedResult.end());
 
 		return true;
 	}
@@ -1339,10 +1395,19 @@ namespace gaia3d
 			size_t targetPointIndexOfTargetHole = sortedRingsAndTheirLowerLeftPointList[sortedHoleIndexToBeEliminated].second;
 			bool bReverseThisInnerHole = bReverseInnerRings[targetHoleIndex - 1];
 
-			if (earCutHoleOfPolygon(pxs, pys, eachRingPointCount, targetHoleIndex, targetPointIndexOfTargetHole, bReverseThisInnerHole, result))
+			bool bThisHoleEliminated = false;
+			for (size_t i = 0; i < eachRingPointCount[targetHoleIndex]; i++)
 			{
-				eliminatedHoleIndices.push_back(sortedHoleIndexToBeEliminated);
+				if (earCutHoleOfPolygon(pxs, pys, eachRingPointCount, targetHoleIndex, (targetPointIndexOfTargetHole + i)% eachRingPointCount[targetHoleIndex], bReverseThisInnerHole, result))
+				{
+					eliminatedHoleIndices.push_back(sortedHoleIndexToBeEliminated);
+					bThisHoleEliminated = true;
+					break;
+				}
+			}
 
+			if (bThisHoleEliminated)
+			{
 				if (eliminatedHoleIndices.size() == sortedRingsAndTheirLowerLeftPointList.size())
 					break;
 			}

@@ -22,6 +22,8 @@ public:
 		bYAxisUp = false;
 
 		bBuildHiararchy = false;
+
+		bAlignToBottomCenter = bAlignToCenter = false;
 	}
 
 	virtual ~aReader()
@@ -55,6 +57,10 @@ public:
 
 	virtual void injectSrsInfo(std::string& epsg) { this->epsg = epsg; bCoordinateInfoInjected = true; }
 
+	virtual void alignToBottomCenter(bool bAlign) { bAlignToBottomCenter = bAlign; }
+
+	virtual void alignToCenter(bool bAlign) { bAlignToCenter = bAlign; }
+
 	virtual std::map<std::string, std::string>& getTemporaryFiles() { return temporaryFiles; }
 
 	virtual bool shouldGeometryBeDesroyedOutside() { return (!container.empty() && !containers.empty()); }
@@ -87,6 +93,10 @@ protected:
 	double lonOrigin, latOrigin;
 
 	bool bCoordinateInfoInjected;
+
+	bool bAlignToBottomCenter;
+
+	bool bAlignToCenter;
 
 	bool bBuildHiararchy;
 

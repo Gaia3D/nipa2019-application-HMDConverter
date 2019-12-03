@@ -97,6 +97,11 @@ public:
 	RevNode()
 	{
 		parent = NULL;
+#ifdef HMDCUSTOMIZE
+		color = MakeColorU4(0, 187, 0);
+#elif
+		color = MakeColorU4(209, 209, 209);
+#endif
 	}
 
 	~RevNode()
@@ -143,6 +148,7 @@ public:
 	std::string obst;
 	std::string matrix;
 	std::string bbox;
+	gaia3d::ColorU4 color;
 	std::vector<RevPrim*> prims;
 
 	RevNode* parent;
@@ -157,6 +163,7 @@ void setupContainers(std::vector<RevNode*>& nodes,
 					bool bBuibBuildHiararchy,
 					std::map<std::string, std::vector<gaia3d::TrianglePolyhedron*>>& containers,
 					std::map<std::string, std::vector<std::string>>&  ancestorsOfEachSubGroup);
+void setupColors(RevNode* node, std::map<std::string, bool>& splitFilter, gaia3d::ColorU4 color);
 void extractGeometryInformation(RevNode* node,
 								std::vector<gaia3d::TrianglePolyhedron*>& container,
 								std::map<std::string, std::vector<gaia3d::TrianglePolyhedron*>>& containers);
@@ -238,7 +245,7 @@ void dumpHiararchy(std::vector<RevNode*>& nodes, std::string filePath)
 	fclose(file);
 }
 
-void extractObjectIdPattern(RevNode* node, std::string parentIdPattern, Json::Value& container)
+void extractObjectIdPatternFromNode(RevNode* node, Json::Value& container)
 {
 	if (!container.isArray())
 	{
@@ -246,111 +253,70 @@ void extractObjectIdPattern(RevNode* node, std::string parentIdPattern, Json::Va
 		return;
 	}
 
-	std::string nodeId = node->id;
-
-	if (nodeId.front() == '/')
-	{
-		if (!node->children.empty())
-		{
-			for (size_t i = 0; i < node->children.size(); i++)
-			{
-				extractObjectIdPattern(node->children[i], std::string("/[blockId]"), container);
-			}
-		}
-
-		return;
-	}
-
-
-	std::string nodeIdPattern;
-
-	char idBuffer[LineLengthMax];
-	memset(idBuffer, 0x00, sizeof(char) * LineLengthMax);
-	memcpy(idBuffer, nodeId.c_str(), sizeof(char)*nodeId.size());
-	char* word = strtok(idBuffer, " ");
-	bool bNumberPattern = false;
-	while (word != NULL)
-	{
-		std::string stdWord(word);
-		if (stdWord.find("/") != std::string::npos)
-		{
-			if(bNumberPattern)
-				nodeIdPattern += std::string(" /[blockId]");
-			else
-				nodeIdPattern += std::string("/[blockId]");
-
-			break;
-		}
-
-		if (bNumberPattern)
-		{
-			nodeIdPattern += std::string(" # of ");
-			word = strtok(NULL, " ");
-			bNumberPattern = false;
-		}
-		else
-		{
-			nodeIdPattern += stdWord;
-			bNumberPattern = true;
-		}
-
-		word = strtok(NULL, " ");
-	}
-
-	bool bSamePatternFound = false;
-	Json::Value accumulatedObject(Json::objectValue);
-	for (unsigned int i = 0; i < container.size(); i++)
-	{
-		accumulatedObject = container.get(i, accumulatedObject);
-		if (accumulatedObject["1:idPattern"].asString().compare(nodeIdPattern) == 0 &&
-			accumulatedObject["2:parentIdPattern"].asString().compare(parentIdPattern) == 0)
-		{
-			bSamePatternFound = true;
-			break;
-		}
-	}
-
-	if (bSamePatternFound)
-	{
-		if (!node->children.empty())
-		{
-			for (size_t i = 0; i < node->children.size(); i++)
-			{
-				extractObjectIdPattern(node->children[i], nodeIdPattern, container);
-			}
-		}
-
-		return;
-	}
-		
-
-	Json::Value jsonNode(Json::objectValue);
-
-	jsonNode["1:idPattern"] = nodeIdPattern;
-	jsonNode["2:parentIdPattern"] = parentIdPattern;
-
-	container.append(jsonNode);
-
 	if (!node->children.empty())
 	{
 		for (size_t i = 0; i < node->children.size(); i++)
 		{
-			extractObjectIdPattern(node->children[i], jsonNode["1:idPattern"].asString(), container);
+			extractObjectIdPatternFromNode(node->children[i], container);
 		}
 	}
+
+	bool bHasGeom = false;
+	for (size_t i = 0; i < node->prims.size(); i++)
+	{
+		if (node->prims[i]->primType == RevPrim::TYPE11)
+		{
+			bHasGeom = true;
+			break;
+		}
+	}
+
+	if (!bHasGeom)
+		return;
+
+	std::string nodeId = node->id;
+
+	char idBuffer[LineLengthMax];
+	memset(idBuffer, 0x00, sizeof(char) * LineLengthMax);
+	memcpy(idBuffer, nodeId.c_str(), sizeof(char)*nodeId.size());
+	char* word = strtok(idBuffer, " \t\n");
+	std::string nodeIdPattern(word);
+
+	if (nodeIdPattern.find(std::string("/")) == 0)
+		nodeIdPattern = nodeIdPattern.substr(1, nodeIdPattern.size() - 1);
+
+	bool bAlreadyExist = false;
+	for (unsigned int i = 0; i < container.size(); i++)
+	{
+		if ( (container[i])["idPattern"].asString() == nodeIdPattern)
+		{
+			bAlreadyExist = true;
+			break;
+		}
+	}
+
+	if (bAlreadyExist)
+		return;
+
+	Json::Value jsonNode(Json::objectValue);
+	jsonNode["idPattern"] = nodeIdPattern;
+	container.append(jsonNode);
 }
 
-void dumpObjectIdPattern(std::vector<RevNode*>& nodes, std::string filePath)
+static Json::Value objectPatterns(Json::arrayValue);
+void extractObjectIdPattern(std::vector<RevNode*>& nodes)
 {
-	Json::Value roots(Json::arrayValue);
 	for (size_t i = 0; i < nodes.size(); i++)
-		extractObjectIdPattern(nodes[i], std::string("block"), roots);
+		extractObjectIdPatternFromNode(nodes[i], objectPatterns);
+}
 
+void writeObjectPatterns(std::string fileFullPath)
+{
 	Json::StyledWriter writer;
-	std::string result = writer.write(roots);
+	std::string result = writer.write(objectPatterns);
 
 	FILE* file = NULL;
-	file = fopen(filePath.c_str(), "wt");
+	file = fopen(fileFullPath.c_str(), "wt");
 	fprintf(file, "%s", result.c_str());
 	fclose(file);
 }
@@ -455,13 +421,7 @@ bool AvevaRevReader::readRawDataFile(std::string& filePath)
 	fclose(file);
 
 #ifdef TEMPORARY_TEST
-	std::string::size_type dotPosition = filePath.rfind(".");
-	std::string tempPath = filePath.substr(0, dotPosition);
-	std::string hiararchyFileFullPath = tempPath + std::string("_hiararchy.json");
-	dumpHiararchy(createdRootNodes, hiararchyFileFullPath);
-
-	std::string objectIdPatternFileFullPath = tempPath + std::string("_objectIdPattern.json");
-	dumpObjectIdPattern(createdRootNodes, objectIdPatternFileFullPath);
+	extractObjectIdPattern(createdRootNodes);
 #endif
 
 	if(!splitFilter.empty())
@@ -469,6 +429,11 @@ bool AvevaRevReader::readRawDataFile(std::string& filePath)
 
 	if (!splitFilter.empty() || bBuildHiararchy)
 		setupContainers(createdRootNodes, splitFilter, bBuildHiararchy, containers, ancestorsOfEachSubGroup);
+
+	if (!splitFilter.empty())
+		for(size_t i = 0; i < createdRootNodes.size();i++)
+			setupColors(createdRootNodes[i], splitFilter, 0ul);
+
 
 	if (!splitFilter.empty() && containers.empty())
 	{
@@ -492,6 +457,43 @@ bool AvevaRevReader::readRawDataFile(std::string& filePath)
 	}
 
 	createdRootNodes.clear();
+
+	if (bAlignToBottomCenter || bAlignToCenter)
+	{
+		gaia3d::BoundingBox bbox;
+		size_t meshCount = container.size();
+		for (size_t i = 0; i < meshCount; i++)
+		{
+			std::vector<gaia3d::Vertex*>& vertices = container[i]->getVertices();
+			size_t vertexCount = vertices.size();
+			for (size_t j = 0; j < vertexCount; j++)
+				bbox.addPoint(vertices[j]->position.x, vertices[j]->position.y, vertices[j]->position.z);
+		}
+
+		double cx, cy, cz;
+		bbox.getCenterPoint(cx, cy, cz);
+
+		if (bAlignToCenter)
+		{
+			for (size_t i = 0; i < meshCount; i++)
+			{
+				std::vector<gaia3d::Vertex*>& vertices = container[i]->getVertices();
+				size_t vertexCount = vertices.size();
+				for (size_t j = 0; j < vertexCount; j++)
+					vertices[j]->position.set(vertices[j]->position.x - cx, vertices[j]->position.y - cy, vertices[j]->position.z - cz);
+			}
+		}
+		else
+		{
+			for (size_t i = 0; i < meshCount; i++)
+			{
+				std::vector<gaia3d::Vertex*>& vertices = container[i]->getVertices();
+				size_t vertexCount = vertices.size();
+				for (size_t j = 0; j < vertexCount; j++)
+					vertices[j]->position.set(vertices[j]->position.x - cx, vertices[j]->position.y - cy, vertices[j]->position.z);
+			}
+		}
+	}
 
 	return true;
 }
@@ -1006,6 +1008,43 @@ void setupContainers(std::vector<RevNode*>& nodes,
 	}
 }
 
+void setupColors(RevNode* node, std::map<std::string, bool>& splitFilter, gaia3d::ColorU4 color)
+{
+#ifdef HMDCUSTOMIZE
+	if (color == MakeColorU4(0, 0, 0))
+	{
+		if (node->id.find(std::string("/")) == 0)
+		{
+			if (node->id.size() == 6)
+			{
+				std::string blockId = node->id.substr(2, node->id.size() - 2);
+				if (splitFilter.find(blockId) != splitFilter.end())
+				{
+					std::string outfittingType = node->id.substr(1, 1);
+					if (outfittingType == std::string("E"))
+						node->color = color = MakeColorU4(0, 255, 255);
+					else if (outfittingType == std::string("F"))
+						node->color = color = MakeColorU4(255, 165, 0);
+					else if (outfittingType == std::string("T"))
+						node->color = color = MakeColorU4(0, 0, 255);
+					else if (outfittingType == std::string("M"))
+						node->color = color = MakeColorU4(255, 20, 147);
+					else if (outfittingType == std::string("A"))
+						node->color = color = MakeColorU4(128, 128, 128);
+				}
+			}
+		}
+	}
+	else
+		node->color = color;
+
+	for (size_t i = 0; i < node->children.size(); i++)
+		setupColors(node->children[i], splitFilter, color);
+#elif
+	return;
+#endif
+}
+
 size_t objectCount = 0;
 void extractGeometryInformation(RevNode* node,
 								std::vector<gaia3d::TrianglePolyhedron*>& container,
@@ -1266,7 +1305,7 @@ void extractGeometryInformation(RevNode* node,
 			polyhedron->addStringAttribute(std::string(ObjectGuid), node->id);
 			polyhedron->setHasNormals(true);
 			polyhedron->setColorMode(gaia3d::ColorMode::SingleColor);
-			polyhedron->setSingleColor(DefaultColor);
+			polyhedron->setSingleColor(node->color);
 			container.push_back(polyhedron);
 			objectCount++;
 
