@@ -528,7 +528,7 @@ namespace gaia3d
 			lfNormal += (crossProd * angle);
 		}
 
-		normal = (lfNormal > 0.0) ? 1 : -1;
+		normal = (lfNormal > 3.0) ? 1 :((lfNormal < -3.0 ) ? -1 : 0);
 	}
 
 	bool intersectionTestOnTwoLineSegments( double x1Start, double y1Start, double x1End, double y1End,
@@ -575,9 +575,33 @@ namespace gaia3d
 									int thisPolygonNormal,
 									std::vector<std::vector<size_t>>& subPolygons)
 	{
-		// 0. use only 1st concave point.
+		// 0. find concave point to use it as starting of ear-cut, which DOESN't appear multple times in polygon point array.
 		size_t concavePointIndexOnAllPoints = concavePointIndicesOnAllPoints[0];
 		size_t concavePointIndexOnThisPolygon = concavePointIndicesOnThisPolygon[0];
+
+		/*size_t concavePointIndexOnAllPoints;
+		size_t concavePointIndexOnThisPolygon;
+		for (size_t i = 0; i < concavePointIndicesOnAllPoints.size(); i++)
+		{
+			concavePointIndexOnAllPoints = concavePointIndicesOnAllPoints[i];
+			size_t appearingTimes = 0;
+			for (size_t j = 0; j < polygonVertexIndices.size(); j++)
+			{
+				if (concavePointIndexOnAllPoints == polygonVertexIndices[j])
+				{
+					appearingTimes++;
+					if (appearingTimes > 1)
+						break;
+				}
+			}
+
+			if (appearingTimes == 1)
+			{
+				concavePointIndexOnThisPolygon = concavePointIndicesOnThisPolygon[i];
+				break;
+			}
+		}*/
+
 		size_t polygonPointCount = polygonVertexIndices.size();
 		gaia3d::Point3D concavePoint;
 		concavePoint.set(pxs[concavePointIndexOnAllPoints], pys[concavePointIndexOnAllPoints], 0.0);
@@ -588,12 +612,30 @@ namespace gaia3d
 		size_t nextIndexOfConcavePointOnThisPolygon = (concavePointIndexOnThisPolygon == polygonPointCount - 1) ? 0 : concavePointIndexOnThisPolygon + 1;
 		gaia3d::Point3D targetPoint;
 		double squaredDist;
-		for (size_t i = 0; i < polygonVertexIndices.size(); i++)
+		for (size_t i = 0; i < polygonPointCount; i++)
 		{
-			if (i == concavePointIndexOnThisPolygon ||
-				i == prevIndexOfConcavePointOnThisPolygon ||
-				i == nextIndexOfConcavePointOnThisPolygon)
+			if(polygonVertexIndices[i] == concavePointIndexOnAllPoints ||
+				polygonVertexIndices[(i+1)%polygonPointCount] == concavePointIndexOnAllPoints ||
+				polygonVertexIndices[(i + polygonPointCount - 1) % polygonPointCount] == concavePointIndexOnAllPoints ||
+				polygonVertexIndices[i] == polygonVertexIndices[prevIndexOfConcavePointOnThisPolygon] ||
+				polygonVertexIndices[i] == polygonVertexIndices[nextIndexOfConcavePointOnThisPolygon])
 				continue;
+
+			/*bool bAppearMultiply = false;
+			for (size_t j = 0; j < polygonPointCount; j++)
+			{
+				if (j == i)
+					continue;
+
+				if (polygonVertexIndices[i] == polygonVertexIndices[j])
+				{
+					bAppearMultiply = true;
+					break;
+				}
+			}
+
+			if (bAppearMultiply)
+				continue;*/
 
 			targetPoint.set(pxs[polygonVertexIndices[i]], pys[polygonVertexIndices[i]], 0.0);
 			squaredDist = targetPoint.squaredDistanceTo(concavePoint);
@@ -602,7 +644,7 @@ namespace gaia3d
 				sortedPointIndicesOnAllPointsMap[squaredDist] = std::vector<size_t>();
 				sortedPointIndicesOnThisPolygonMap[squaredDist] = std::vector<size_t>();
 			}
-			/*else
+			else
 			{
 				bool bDuplicated = false;
 				for (size_t j = 0; j < sortedPointIndicesOnAllPointsMap[squaredDist].size(); j++)
@@ -616,7 +658,7 @@ namespace gaia3d
 
 				if (bDuplicated)
 					continue;
-			}*/
+			}
 
 			sortedPointIndicesOnAllPointsMap[squaredDist].push_back(polygonVertexIndices[i]);
 			sortedPointIndicesOnThisPolygonMap[squaredDist].push_back(i);
@@ -646,12 +688,12 @@ namespace gaia3d
 			slicerEndX = pxs[sortedPointIndicesOnAllPoints[i]];
 			slicerEndY = pys[sortedPointIndicesOnAllPoints[i]];
 			bool bIntersected = false;
-			for (size_t j = 0; j < polygonPointCount-1; j++)
+			for (size_t j = 0; j < polygonPointCount; j++)
 			{
 				targetStartX = pxs[polygonVertexIndices[j]];
 				targetStartY = pys[polygonVertexIndices[j]];
-				targetEndX = pxs[polygonVertexIndices[j + 1]];
-				targetEndY = pys[polygonVertexIndices[j + 1]];
+				targetEndX = pxs[polygonVertexIndices[(j + 1)% polygonPointCount]];
+				targetEndY = pys[polygonVertexIndices[(j + 1)% polygonPointCount]];
 
 				if (intersectionTestOnTwoLineSegments(  slicerStartX, slicerStartY, slicerEndX, slicerEndY,
 														targetStartX, targetStartY, targetEndX, targetEndY  ) )
@@ -1030,8 +1072,8 @@ namespace gaia3d
 		double squaredDist;
 		for (size_t i = 0; i < mergedOuterRing.size(); i++)
 		{
-			if (duplicationMarker[i] == 0)
-				continue;
+			/*if (duplicationMarker[i] == 0)
+				continue;*/
 
 			xOuterRing = pxs[mergedOuterRing[i].first][mergedOuterRing[i].second];
 			yOuterRing = pys[mergedOuterRing[i].first][mergedOuterRing[i].second];
@@ -1139,6 +1181,62 @@ namespace gaia3d
 		for (size_t i = pointIndexOfOuterRingToBeCut; i < mergedOuterRing.size(); i++)
 			mergedResult.push_back(mergedOuterRing[i]);
 
+		// 4. final validation - check if this polygon is like infinte simbol(butterfly-shaped)
+		double crossProd, dotProd, angle;
+		size_t count = mergedResult.size();
+		size_t prevIndex, nextIndex;
+		size_t prevIndexHole, nextIndexHole, prevIndexPoint, nextIndexPoint, curIndexHole, curIndexPoint;
+		gaia3d::Point3D prevVector, nextVector;
+		double lfNormal = 0.0;
+		double tolerance = 1E-7;
+		for (size_t i = 0; i < count; i++)
+		{
+			prevIndex = (i == 0) ? count - 1 : i - 1;
+			nextIndex = (i == count - 1) ? 0 : i + 1;
+
+			curIndexHole = mergedResult[i].first;
+			curIndexPoint = mergedResult[i].second;
+			prevIndexHole = mergedResult[prevIndex].first;
+			prevIndexPoint = mergedResult[prevIndex].second;
+			nextIndexHole = mergedResult[nextIndex].first;
+			nextIndexPoint = mergedResult[nextIndex].second;
+
+			prevVector.set(pxs[curIndexHole][curIndexPoint] - pxs[prevIndexHole][prevIndexPoint], pys[curIndexHole][curIndexPoint] - pys[prevIndexHole][prevIndexPoint], 0.0);
+			nextVector.set(pxs[nextIndexHole][nextIndexPoint] - pxs[curIndexHole][curIndexPoint], pys[nextIndexHole][nextIndexPoint] - pys[curIndexHole][curIndexPoint], 0.0);
+
+			if (!prevVector.normalize())
+				continue;
+			if (!nextVector.normalize())
+				continue;
+
+			crossProd = prevVector.x*nextVector.y - prevVector.y*nextVector.x;
+			dotProd = prevVector.x * nextVector.x + prevVector.y * nextVector.y;
+			if (crossProd > tolerance)
+			{
+				crossProd = 1.0;
+			}
+			else if (crossProd < -tolerance)
+			{
+				crossProd = -1.0;
+			}
+			else
+				continue;
+
+			if (dotProd > 1.0)
+				dotProd = 1.0;
+
+			if (dotProd < -1.0)
+				dotProd = -1.0;
+
+			angle = acos(dotProd);
+
+			lfNormal += (crossProd * angle);
+		}
+
+		if(lfNormal < 3.0 && lfNormal > -3.0)
+			return false;
+
+		// 5. put the result into container
 		mergedOuterRing.clear();
 		mergedOuterRing.insert(mergedOuterRing.begin(), mergedResult.begin(), mergedResult.end());
 
