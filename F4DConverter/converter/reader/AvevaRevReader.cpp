@@ -79,6 +79,14 @@ public:
 		}
 
 		surfaces.clear();
+
+		for (size_t i = 0; vertexList.size(); i++)
+		{
+			delete vertexList[i];
+		}
+
+		vertexIndices.clear();
+		vertexList.clear();
 	}
 
 	enum PRIM_TYPE {NONE, UNKNOWN, BROKEN, TYPE1, TYPE2, TYPE3, TYPE4, TYPE5, TYPE6, TYPE7, TYPE8, TYPE9, TYPE10, TYPE11};
@@ -86,8 +94,10 @@ public:
 public:
 	PRIM_TYPE primType; // one of 1, 2, 4, 7, 8, 10, 11. still can't understand what this means
 	gaia3d::BoundingBox bbox;
-	std::vector<RevSurface*> surfaces;
+	std::vector<RevSurface*> surfaces; // for TYPE11
 	std::string unparsedInfo;
+	std::vector<gaia3d::Vertex*> vertexList; // for  TYPE4, TYPE8
+	std::vector<size_t> vertexIndices; // for  TYPE4, TYPE8
 };
 
 // node definition in rev files
@@ -701,7 +711,99 @@ bool readPrimInfo(FILE* file, RevNode* node)
 	break;
 	case RevPrim::PRIM_TYPE::TYPE4:
 	{
-		readALine(line, file); // read dummy line
+		readALine(line, file); // read curve radius, tube radius, angle by which curved
+		tokenizeFloatingNumbers(line, tokenizedNumbers);
+		double radius = tokenizedNumbers[0];
+		double tubeRadius = tokenizedNumbers[1];
+		double angle = tokenizedNumbers[2];
+		tokenizedNumbers.clear();
+
+		char stepCount; // 2 : 90 degree, 1 : 45 degree
+		double stepSize = M_PI / 4.0;
+		if (angle > 1.5707 && angle < 1.5708)
+			stepCount = 2;
+		else if (angle > 0.7853 && angle < 0.7854)
+			stepCount = 1;
+		else
+		{
+			stepCount = 1;
+			stepSize = angle;
+		}
+
+		// make initial cross section verties
+		size_t divCount = 8;
+		std::vector<gaia3d::Vertex*> initialCrossSection;
+		for (size_t i = 0; i < divCount; i++)
+		{
+			double angle = (M_PI * 2.0) * i / divCount;
+			double sinAngle = sin(angle);
+			double cosAngle = cos(angle);
+
+			gaia3d::Vertex* vertex = new gaia3d::Vertex;
+			vertex->position.set(tubeRadius * cosAngle + radius, 0.0, tubeRadius * sinAngle);
+			vertex->normal.set(cosAngle, 0.0, sinAngle);
+
+			initialCrossSection.push_back(vertex);
+		}
+
+		// make curved tube cross sections by rotating initial cross section by stepCount times of stepSize around the origin
+		std::vector<std::vector<gaia3d::Vertex*>> crossSections;
+		crossSections.push_back(initialCrossSection);
+		for (size_t i = 0; i < stepCount; i++)
+		{
+			double angle = stepSize * (i + 1);
+			double sinAngle = sin(angle);
+			double cosAngle = cos(angle);
+
+			std::vector<gaia3d::Vertex*> crossSection;
+			for (size_t j = 0; j < divCount; j++)
+			{
+				double magnitudeProjectedOnXYPlane = initialCrossSection[j]->position.x;
+
+				gaia3d::Vertex* vertex = new gaia3d::Vertex;
+				vertex->position.set(initialCrossSection[j]->position.x * cosAngle, initialCrossSection[j]->position.x * sinAngle, initialCrossSection[j]->position.z);
+				vertex->normal.set(initialCrossSection[j]->normal.x * cosAngle, initialCrossSection[j]->normal.x * sinAngle, initialCrossSection[j]->normal.z);
+
+				crossSection.push_back(vertex);
+			}
+
+			crossSections.push_back(crossSection);
+		}
+
+		// merge vertices 
+		for (size_t i = 0; i < crossSections.size(); i++)
+		{
+			for (size_t j = 0; j < divCount; j++)
+				prim->vertexList.push_back((crossSections[i])[j]);
+		}
+
+		// make vertex indices of triangles
+		for (size_t i = 1; i < crossSections.size(); i++)
+		{
+			for (size_t j = 0; j < divCount; j++)
+			{
+				size_t nextIndex = (j + 1) % divCount;
+
+				prim->vertexIndices.push_back(i*divCount + j);
+				prim->vertexIndices.push_back(i*divCount + nextIndex);
+				prim->vertexIndices.push_back((i-1)*divCount + nextIndex);
+
+				prim->vertexIndices.push_back(i*divCount + j);
+				prim->vertexIndices.push_back((i - 1)*divCount + nextIndex);
+				prim->vertexIndices.push_back((i - 1)*divCount + j);
+			}
+		}
+
+		// apply transform matrix on vertices
+		for (size_t i = 0; i < prim->vertexList.size(); i++)
+		{
+			gaia3d::Vertex* vertex = prim->vertexList[i];
+
+			vertex->position = transMat * (vertex->position);
+			transMat.applyOnlyRotationOnPoint(vertex->normal);
+
+			vertex->normal.normalize();
+		}
 	}
 	break;
 	case RevPrim::PRIM_TYPE::TYPE5:
@@ -722,7 +824,104 @@ bool readPrimInfo(FILE* file, RevNode* node)
 	break;
 	case RevPrim::PRIM_TYPE::TYPE8:
 	{
-		readALine(line, file); // read dummy line
+		readALine(line, file); // read radius and height
+		tokenizeFloatingNumbers(line, tokenizedNumbers);
+		double radius = tokenizedNumbers[0];
+		double height = tokenizedNumbers[1];
+		tokenizedNumbers.clear();
+
+		// modeling cylinder as extrusion of octagon
+		std::vector<gaia3d::Vertex*> top, bottom, side;
+		std::vector<size_t> topIndices, bottomIndices, sideIndices;
+		size_t divCount = 8;
+		for (size_t i = 0; i < divCount; i++)
+		{
+			double angle = (M_PI * 2.0) * i / divCount;
+			double sinAngle = sin(angle);
+			double cosAngle = cos(angle);
+
+			// vertex on top plane
+			gaia3d::Vertex* topVertex = new gaia3d::Vertex;
+			topVertex->position.set(radius*cosAngle, radius*sinAngle, height / 2.0);
+			topVertex->normal.set(0.0, 0.0, 1.0);
+			top.push_back(topVertex);
+
+			// vertex on bottom plane
+			gaia3d::Vertex* bottomVertex = new gaia3d::Vertex;
+			bottomVertex->position.set(topVertex->position.x, -(topVertex->position.y), -height/2.0);
+			bottomVertex->normal.set(0.0, 0.0, -1.0);
+			bottom.push_back(bottomVertex);
+
+			// 2 vertices on side
+			gaia3d::Vertex* sideTopVertex = new gaia3d::Vertex;
+			sideTopVertex->position.set(topVertex->position.x, topVertex->position.y, topVertex->position.z);
+			sideTopVertex->normal.set(cosAngle, sinAngle, 0.0);
+			side.push_back(sideTopVertex);
+
+			gaia3d::Vertex* sideBottomVertex = new gaia3d::Vertex;
+			sideBottomVertex->position.set(topVertex->position.x, topVertex->position.y, -(topVertex->position.z));
+			sideBottomVertex->normal.set(cosAngle, sinAngle, 0.0);
+			side.push_back(sideBottomVertex);
+		}
+
+		// build vertex indices of triangles on top/bottom plane
+		for (size_t i = 0; i < divCount - 2; i++)
+		{
+			topIndices.push_back(0);
+			topIndices.push_back(i + 1);
+			topIndices.push_back(i + 2);
+
+			bottomIndices.push_back(0);
+			bottomIndices.push_back(i + 1);
+			bottomIndices.push_back(i + 2);
+		}
+
+		// build vertex indices of triangles on side surface
+		for (size_t i = 0; i < divCount; i++)
+		{
+			size_t nextIndex = (i + 1) % divCount;
+			sideIndices.push_back(2*i);
+			sideIndices.push_back(2*i+1);
+			sideIndices.push_back(2*nextIndex);
+
+			sideIndices.push_back(2*nextIndex);
+			sideIndices.push_back(2 * i + 1);
+			sideIndices.push_back(2 * nextIndex + 1);
+		}
+
+		// merge vertices and vertex indices
+		for(size_t i = 0; i < top.size(); i++)
+			prim->vertexList.push_back(top[i]);
+
+		for (size_t i = 0; i < topIndices.size(); i++)
+			prim->vertexIndices.push_back(topIndices[i]);
+
+		size_t offset = prim->vertexList.size();
+
+		for (size_t i = 0; i < bottom.size(); i++)
+			prim->vertexList.push_back(bottom[i]);
+
+		for (size_t i = 0; i < bottomIndices.size(); i++)
+			prim->vertexIndices.push_back(bottomIndices[i] + offset);
+
+		offset = prim->vertexList.size();
+
+		for (size_t i = 0; i < side.size(); i++)
+			prim->vertexList.push_back(side[i]);
+
+		for (size_t i = 0; i < sideIndices.size(); i++)
+			prim->vertexIndices.push_back(sideIndices[i] + offset);
+
+		// apply transform matrix on vertices
+		for (size_t i = 0; i < prim->vertexList.size(); i++)
+		{
+			gaia3d::Vertex* vertex = prim->vertexList[i];
+
+			vertex->position = transMat * (vertex->position);
+			transMat.applyOnlyRotationOnPoint(vertex->normal);
+
+			vertex->normal.normalize();
+		}
 	}
 	break;
 	case RevPrim::PRIM_TYPE::TYPE9:
@@ -1085,61 +1284,134 @@ void extractGeometryInformation(RevNode* node,
 
 		for (size_t i = 0; i < node->prims.size(); i++)
 		{
-			if (node->prims[i]->primType != RevPrim::PRIM_TYPE::TYPE11)
-				continue;
-
 			prim = node->prims[i];
 			polyhedron = new gaia3d::TrianglePolyhedron;
 
-			RevSurface* surface;
-			for (size_t j = 0; j < prim->surfaces.size(); j++)
+			if (prim->primType == RevPrim::PRIM_TYPE::TYPE4 || prim->primType == RevPrim::PRIM_TYPE::TYPE8)
 			{
-				surface = prim->surfaces[j];
+				for (size_t j = 0; j < prim->vertexList.size(); j++)
+					polyhedron->getVertices().push_back(prim->vertexList[j]);
 
-				size_t subSurfaceCount = surface->subSurfaces.size();
-				gaia3d::Surface* f4dSurface;
-				if (subSurfaceCount > 1)  // case of polygon with inner holes
+				gaia3d::Surface* surface = new gaia3d::Surface;
+				polyhedron->getSurfaces().push_back(surface);
+
+				size_t vertexIndex0, vertexIndex1, vertexIndex2;
+				for (size_t j = 0; j < prim->vertexIndices.size(); j = j + 3)
 				{
-					// sub surface 0 : exterior
-					// sub surface 1 ~ n : inner holes
+					gaia3d::Triangle* triangle = new gaia3d::Triangle;
+					vertexIndex0 = prim->vertexIndices[j];
+					vertexIndex1 = prim->vertexIndices[j + 1];
+					vertexIndex2 = prim->vertexIndices[j + 2];
+					triangle->setVertexIndices(vertexIndex0, vertexIndex1, vertexIndex2);
+					triangle->setVertices(polyhedron->getVertices()[vertexIndex0], polyhedron->getVertices()[vertexIndex1], polyhedron->getVertices()[vertexIndex2]);
 
-					std::vector<size_t> pointCountOfAllRings;
-					double** xss = new double*[subSurfaceCount];
-					memset(xss, 0x00, sizeof(double*)*subSurfaceCount);
-					double** yss = new double*[subSurfaceCount];
-					memset(yss, 0x00, sizeof(double*)*subSurfaceCount);
-					double** zss = new double*[subSurfaceCount];
-					memset(zss, 0x00, sizeof(double*)*subSurfaceCount);
+					surface->getTriangles().push_back(triangle);
+				}
+			}
 
-					RevSubSurface* subSurface;
-					size_t vertexCount, totalVertexCount = 0;
-					for (size_t k = 0; k < subSurfaceCount; k++)
+			if (prim->primType == RevPrim::PRIM_TYPE::TYPE11)
+			{
+				RevSurface* surface;
+				for (size_t j = 0; j < prim->surfaces.size(); j++)
+				{
+					surface = prim->surfaces[j];
+
+					size_t subSurfaceCount = surface->subSurfaces.size();
+					gaia3d::Surface* f4dSurface;
+					if (subSurfaceCount > 1)  // case of polygon with inner holes
 					{
-						subSurface = surface->subSurfaces[k];
-						vertexCount = subSurface->vertices.size();
-						pointCountOfAllRings.push_back(vertexCount);
-						totalVertexCount += vertexCount;
+						// sub surface 0 : exterior
+						// sub surface 1 ~ n : inner holes
 
-						xss[k] = new double[vertexCount];
-						memset(xss[k], 0x00, sizeof(double)*vertexCount);
-						yss[k] = new double[vertexCount];
-						memset(yss[k], 0x00, sizeof(double)*vertexCount);
-						zss[k] = new double[vertexCount];
-						memset(zss[k], 0x00, sizeof(double)*vertexCount);
+						std::vector<size_t> pointCountOfAllRings;
+						double** xss = new double*[subSurfaceCount];
+						memset(xss, 0x00, sizeof(double*)*subSurfaceCount);
+						double** yss = new double*[subSurfaceCount];
+						memset(yss, 0x00, sizeof(double*)*subSurfaceCount);
+						double** zss = new double*[subSurfaceCount];
+						memset(zss, 0x00, sizeof(double*)*subSurfaceCount);
 
-						for (size_t m = 0; m < vertexCount; m++)
+						RevSubSurface* subSurface;
+						size_t vertexCount, totalVertexCount = 0;
+						for (size_t k = 0; k < subSurfaceCount; k++)
 						{
-							xss[k][m] = subSurface->vertices[m]->position.x;
-							yss[k][m] = subSurface->vertices[m]->position.y;
-							zss[k][m] = subSurface->vertices[m]->position.z;
+							subSurface = surface->subSurfaces[k];
+							vertexCount = subSurface->vertices.size();
+							pointCountOfAllRings.push_back(vertexCount);
+							totalVertexCount += vertexCount;
+
+							xss[k] = new double[vertexCount];
+							memset(xss[k], 0x00, sizeof(double)*vertexCount);
+							yss[k] = new double[vertexCount];
+							memset(yss[k], 0x00, sizeof(double)*vertexCount);
+							zss[k] = new double[vertexCount];
+							memset(zss[k], 0x00, sizeof(double)*vertexCount);
+
+							for (size_t m = 0; m < vertexCount; m++)
+							{
+								xss[k][m] = subSurface->vertices[m]->position.x;
+								yss[k][m] = subSurface->vertices[m]->position.y;
+								zss[k][m] = subSurface->vertices[m]->position.z;
+							}
 						}
-					}
-					
-					bool bDebug = false;
-					std::vector<std::pair<size_t, size_t>> earCutResult;
-					if (!gaia3d::GeometryUtility::earCut(xss, yss, zss, pointCountOfAllRings, earCutResult, bDebug) ||
-						earCutResult.empty())
-					{
+
+						bool bDebug = false;
+						std::vector<std::pair<size_t, size_t>> earCutResult;
+						if (!gaia3d::GeometryUtility::earCut(xss, yss, zss, pointCountOfAllRings, earCutResult, bDebug) ||
+							earCutResult.empty())
+						{
+							for (size_t k = 0; k < subSurfaceCount; k++)
+							{
+								delete[] xss[k];
+								delete[] yss[k];
+								delete[] zss[k];
+							}
+							delete[] xss;
+							delete[] yss;
+							delete[] zss;
+
+							for (size_t k = 0; k < subSurfaceCount; k++)
+							{
+								subSurface = surface->subSurfaces[k];
+								vertexCount = subSurface->vertices.size();
+
+								for (size_t m = 0; m < vertexCount; m++)
+									delete subSurface->vertices[m];
+							}
+
+							printf("[WARNING] Ear cutting failed. : %s\n", node->id.c_str());
+
+							continue;
+						}
+
+						size_t indexOffset = polyhedron->getVertices().size();
+						for (size_t k = 0; k < subSurfaceCount; k++)
+						{
+							subSurface = surface->subSurfaces[k];
+							vertexCount = subSurface->vertices.size();
+
+							for (size_t m = 0; m < vertexCount; m++)
+								polyhedron->getVertices().push_back(subSurface->vertices[m]);
+						}
+
+						double* xs = new double[totalVertexCount];
+						memset(xs, 0x00, sizeof(double)*totalVertexCount);
+						double* ys = new double[totalVertexCount];
+						memset(ys, 0x00, sizeof(double)*totalVertexCount);
+						double* zs = new double[totalVertexCount];
+						memset(zs, 0x00, sizeof(double)*totalVertexCount);
+
+						size_t arrayPosOffset = 0;
+						for (size_t k = 0; k < subSurfaceCount; k++)
+						{
+							if (k != 0)
+								arrayPosOffset += pointCountOfAllRings[k - 1];
+
+							memcpy(xs + arrayPosOffset, xss[k], sizeof(double) * pointCountOfAllRings[k]);
+							memcpy(ys + arrayPosOffset, yss[k], sizeof(double) * pointCountOfAllRings[k]);
+							memcpy(zs + arrayPosOffset, zss[k], sizeof(double) * pointCountOfAllRings[k]);
+						}
+
 						for (size_t k = 0; k < subSurfaceCount; k++)
 						{
 							delete[] xss[k];
@@ -1150,162 +1422,117 @@ void extractGeometryInformation(RevNode* node,
 						delete[] yss;
 						delete[] zss;
 
-						for (size_t k = 0; k < subSurfaceCount; k++)
+						std::vector<size_t> polygonIndices;
+						size_t polygonPointIndexOffset;
+						for (size_t k = 0; k < earCutResult.size(); k++)
 						{
-							subSurface = surface->subSurfaces[k];
-							vertexCount = subSurface->vertices.size();
+							polygonPointIndexOffset = 0;
+							for (size_t m = 0; m < earCutResult[k].first; m++)
+								polygonPointIndexOffset += pointCountOfAllRings[m];
 
-							for (size_t m = 0; m < vertexCount; m++)
-								delete subSurface->vertices[m];
+							polygonIndices.push_back(polygonPointIndexOffset + earCutResult[k].second);
 						}
 
-						printf("[WARNING] Ear cutting failed. : %s\n", node->id.c_str());
+						std::vector<size_t> triangleIndices;
+						gaia3d::GeometryUtility::tessellate(xs, ys, zs, totalVertexCount, polygonIndices, triangleIndices);
+						delete[] xs;
+						delete[] ys;
+						delete[] zs;
 
-						continue;
+						if (triangleIndices.empty())
+							continue;
+
+						f4dSurface = new gaia3d::Surface;
+						gaia3d::Triangle* triangle;
+						for (size_t m = 0; m < triangleIndices.size() / 3; m++)
+						{
+							triangle = new gaia3d::Triangle;
+
+							triangle->setVertices(polyhedron->getVertices()[indexOffset + triangleIndices[3 * m]],
+								polyhedron->getVertices()[indexOffset + triangleIndices[3 * m + 1]],
+								polyhedron->getVertices()[indexOffset + triangleIndices[3 * m + 2]]);
+							triangle->setVertexIndices(indexOffset + triangleIndices[3 * m],
+								indexOffset + triangleIndices[3 * m + 1],
+								indexOffset + triangleIndices[3 * m + 2]);
+
+							f4dSurface->getTriangles().push_back(triangle);
+						}
+
+						polyhedron->getSurfaces().push_back(f4dSurface);
 					}
-
-					size_t indexOffset = polyhedron->getVertices().size();
-					for (size_t k = 0; k < subSurfaceCount; k++)
+					else if (subSurfaceCount == 1)// case of polygon having only exterior closed linestring
 					{
-						subSurface = surface->subSurfaces[k];
+						RevSubSurface* subSurface;
+						size_t vertexCount;
+						size_t indexOffset;
+
+						subSurface = surface->subSurfaces[0];
 						vertexCount = subSurface->vertices.size();
+						indexOffset = polyhedron->getVertices().size();
 
+						f4dSurface = new gaia3d::Surface;
+
+						double* xs = new double[vertexCount];
+						memset(xs, 0x00, sizeof(double)*vertexCount);
+						double* ys = new double[vertexCount];
+						memset(ys, 0x00, sizeof(double)*vertexCount);
+						double* zs = new double[vertexCount];
+						memset(zs, 0x00, sizeof(double)*vertexCount);
+						std::vector<size_t> polygonIndices;
 						for (size_t m = 0; m < vertexCount; m++)
+						{
 							polyhedron->getVertices().push_back(subSurface->vertices[m]);
+
+							xs[m] = subSurface->vertices[m]->position.x;
+							ys[m] = subSurface->vertices[m]->position.y;
+							zs[m] = subSurface->vertices[m]->position.z;
+
+							polygonIndices.push_back(m);
+						}
+						std::vector<size_t> triangleIndices;
+
+						gaia3d::GeometryUtility::tessellate(xs, ys, zs, vertexCount, polygonIndices, triangleIndices);
+						delete[] xs;
+						delete[] ys;
+						delete[] zs;
+
+						gaia3d::Triangle* triangle;
+						for (size_t m = 0; m < triangleIndices.size() / 3; m++)
+						{
+							triangle = new gaia3d::Triangle;
+
+							triangle->setVertices(polyhedron->getVertices()[indexOffset + triangleIndices[3 * m]],
+								polyhedron->getVertices()[indexOffset + triangleIndices[3 * m + 1]],
+								polyhedron->getVertices()[indexOffset + triangleIndices[3 * m + 2]]);
+							triangle->setVertexIndices(indexOffset + triangleIndices[3 * m],
+								indexOffset + triangleIndices[3 * m + 1],
+								indexOffset + triangleIndices[3 * m + 2]);
+
+							f4dSurface->getTriangles().push_back(triangle);
+						}
+
+						polyhedron->getSurfaces().push_back(f4dSurface);
 					}
-
-					double* xs = new double[totalVertexCount];
-					memset(xs, 0x00, sizeof(double)*totalVertexCount);
-					double* ys = new double[totalVertexCount];
-					memset(ys, 0x00, sizeof(double)*totalVertexCount);
-					double* zs = new double[totalVertexCount];
-					memset(zs, 0x00, sizeof(double)*totalVertexCount);
-
-					size_t arrayPosOffset = 0;
-					for (size_t k = 0; k < subSurfaceCount; k++)
-					{
-						if (k != 0)
-							arrayPosOffset += pointCountOfAllRings[k-1];
-
-						memcpy(xs + arrayPosOffset, xss[k], sizeof(double) * pointCountOfAllRings[k]);
-						memcpy(ys + arrayPosOffset, yss[k], sizeof(double) * pointCountOfAllRings[k]);
-						memcpy(zs + arrayPosOffset, zss[k], sizeof(double) * pointCountOfAllRings[k]);
-					}
-
-					for (size_t k = 0; k < subSurfaceCount; k++)
-					{
-						delete[] xss[k];
-						delete[] yss[k];
-						delete[] zss[k];
-					}
-					delete[] xss;
-					delete[] yss;
-					delete[] zss;
-
-					std::vector<size_t> polygonIndices;
-					size_t polygonPointIndexOffset;
-					for (size_t k = 0; k < earCutResult.size(); k++)
-					{
-						polygonPointIndexOffset = 0;
-						for (size_t m = 0; m < earCutResult[k].first; m++)
-							polygonPointIndexOffset += pointCountOfAllRings[m];
-
-						polygonIndices.push_back(polygonPointIndexOffset + earCutResult[k].second);
-					}
-
-					std::vector<size_t> triangleIndices;
-					gaia3d::GeometryUtility::tessellate(xs, ys, zs, totalVertexCount, polygonIndices, triangleIndices);
-					delete[] xs;
-					delete[] ys;
-					delete[] zs;
-
-					if (triangleIndices.empty())
-						continue;
-
-					f4dSurface = new gaia3d::Surface;
-					gaia3d::Triangle* triangle;
-					for (size_t m = 0; m < triangleIndices.size() / 3; m++)
-					{
-						triangle = new gaia3d::Triangle;
-
-						triangle->setVertices(  polyhedron->getVertices()[indexOffset + triangleIndices[3 * m]],
-												polyhedron->getVertices()[indexOffset + triangleIndices[3 * m + 1]],
-												polyhedron->getVertices()[indexOffset + triangleIndices[3 * m + 2]])  ;
-						triangle->setVertexIndices( indexOffset + triangleIndices[3 * m],
-													indexOffset + triangleIndices[3 * m + 1],
-													indexOffset + triangleIndices[3 * m + 2] );
-
-						f4dSurface->getTriangles().push_back(triangle);
-					}
-
-					polyhedron->getSurfaces().push_back(f4dSurface);
-				}
-				else if(subSurfaceCount == 1)// case of polygon having only exterior closed linestring
-				{
-					RevSubSurface* subSurface;
-					size_t vertexCount;
-					size_t indexOffset;
-
-					subSurface = surface->subSurfaces[0];
-					vertexCount = subSurface->vertices.size();
-					indexOffset = polyhedron->getVertices().size();
-
-					f4dSurface = new gaia3d::Surface;
-
-					double* xs = new double[vertexCount];
-					memset(xs, 0x00, sizeof(double)*vertexCount);
-					double* ys = new double[vertexCount];
-					memset(ys, 0x00, sizeof(double)*vertexCount);
-					double* zs = new double[vertexCount];
-					memset(zs, 0x00, sizeof(double)*vertexCount);
-					std::vector<size_t> polygonIndices;
-					for (size_t m = 0; m < vertexCount; m++)
-					{
-						polyhedron->getVertices().push_back(subSurface->vertices[m]);
-
-						xs[m] = subSurface->vertices[m]->position.x;
-						ys[m] = subSurface->vertices[m]->position.y;
-						zs[m] = subSurface->vertices[m]->position.z;
-
-						polygonIndices.push_back(m);
-					}
-					std::vector<size_t> triangleIndices;
-
-					gaia3d::GeometryUtility::tessellate(xs, ys, zs, vertexCount, polygonIndices, triangleIndices);
-					delete[] xs;
-					delete[] ys;
-					delete[] zs;
-
-					gaia3d::Triangle* triangle;
-					for (size_t m = 0; m < triangleIndices.size() / 3; m++)
-					{
-						triangle = new gaia3d::Triangle;
-
-						triangle->setVertices(  polyhedron->getVertices()[indexOffset + triangleIndices[3 * m]],
-												polyhedron->getVertices()[indexOffset + triangleIndices[3 * m + 1]],
-												polyhedron->getVertices()[indexOffset + triangleIndices[3 * m + 2]]  );
-						triangle->setVertexIndices( indexOffset + triangleIndices[3 * m],
-													indexOffset + triangleIndices[3 * m + 1],
-													indexOffset + triangleIndices[3 * m + 2] );
-
-						f4dSurface->getTriangles().push_back(triangle);
-					}
-
-					polyhedron->getSurfaces().push_back(f4dSurface);
 				}
 			}
 
 			if (polyhedron->getVertices().empty() || polyhedron->getSurfaces().empty())
 			{
 				delete polyhedron;
-				return;
+				continue;
 			}
 
 			polyhedron->setId(container.size());
 			polyhedron->addStringAttribute(std::string(ObjectGuid), node->id);
 			polyhedron->setHasNormals(true);
 			polyhedron->setColorMode(gaia3d::ColorMode::SingleColor);
-			polyhedron->setSingleColor(node->color);
+			if (prim->primType == RevPrim::PRIM_TYPE::TYPE8)
+				polyhedron->setSingleColor(MakeColorU4(255, 0, 0));
+			else if(prim->primType == RevPrim::PRIM_TYPE::TYPE4)
+				polyhedron->setSingleColor(MakeColorU4(0, 0, 255));
+			else
+				polyhedron->setSingleColor(node->color);
+
 			container.push_back(polyhedron);
 			objectCount++;
 

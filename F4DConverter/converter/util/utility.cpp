@@ -1072,8 +1072,8 @@ namespace gaia3d
 		double squaredDist;
 		for (size_t i = 0; i < mergedOuterRing.size(); i++)
 		{
-			/*if (duplicationMarker[i] == 0)
-				continue;*/
+			if (duplicationMarker[i] == 0)
+				continue;
 
 			xOuterRing = pxs[mergedOuterRing[i].first][mergedOuterRing[i].second];
 			yOuterRing = pys[mergedOuterRing[i].first][mergedOuterRing[i].second];
@@ -1182,59 +1182,59 @@ namespace gaia3d
 			mergedResult.push_back(mergedOuterRing[i]);
 
 		// 4. final validation - check if this polygon is like infinte simbol(butterfly-shaped)
-		double crossProd, dotProd, angle;
-		size_t count = mergedResult.size();
-		size_t prevIndex, nextIndex;
-		size_t prevIndexHole, nextIndexHole, prevIndexPoint, nextIndexPoint, curIndexHole, curIndexPoint;
-		gaia3d::Point3D prevVector, nextVector;
-		double lfNormal = 0.0;
-		double tolerance = 1E-7;
-		for (size_t i = 0; i < count; i++)
-		{
-			prevIndex = (i == 0) ? count - 1 : i - 1;
-			nextIndex = (i == count - 1) ? 0 : i + 1;
+		//double crossProd, dotProd, angle;
+		//size_t count = mergedResult.size();
+		//size_t prevIndex, nextIndex;
+		//size_t prevIndexHole, nextIndexHole, prevIndexPoint, nextIndexPoint, curIndexHole, curIndexPoint;
+		//gaia3d::Point3D prevVector, nextVector;
+		//double lfNormal = 0.0;
+		//double tolerance = 1E-7;
+		//for (size_t i = 0; i < count; i++)
+		//{
+		//	prevIndex = (i == 0) ? count - 1 : i - 1;
+		//	nextIndex = (i == count - 1) ? 0 : i + 1;
 
-			curIndexHole = mergedResult[i].first;
-			curIndexPoint = mergedResult[i].second;
-			prevIndexHole = mergedResult[prevIndex].first;
-			prevIndexPoint = mergedResult[prevIndex].second;
-			nextIndexHole = mergedResult[nextIndex].first;
-			nextIndexPoint = mergedResult[nextIndex].second;
+		//	curIndexHole = mergedResult[i].first;
+		//	curIndexPoint = mergedResult[i].second;
+		//	prevIndexHole = mergedResult[prevIndex].first;
+		//	prevIndexPoint = mergedResult[prevIndex].second;
+		//	nextIndexHole = mergedResult[nextIndex].first;
+		//	nextIndexPoint = mergedResult[nextIndex].second;
 
-			prevVector.set(pxs[curIndexHole][curIndexPoint] - pxs[prevIndexHole][prevIndexPoint], pys[curIndexHole][curIndexPoint] - pys[prevIndexHole][prevIndexPoint], 0.0);
-			nextVector.set(pxs[nextIndexHole][nextIndexPoint] - pxs[curIndexHole][curIndexPoint], pys[nextIndexHole][nextIndexPoint] - pys[curIndexHole][curIndexPoint], 0.0);
+		//	prevVector.set(pxs[curIndexHole][curIndexPoint] - pxs[prevIndexHole][prevIndexPoint], pys[curIndexHole][curIndexPoint] - pys[prevIndexHole][prevIndexPoint], 0.0);
+		//	nextVector.set(pxs[nextIndexHole][nextIndexPoint] - pxs[curIndexHole][curIndexPoint], pys[nextIndexHole][nextIndexPoint] - pys[curIndexHole][curIndexPoint], 0.0);
 
-			if (!prevVector.normalize())
-				continue;
-			if (!nextVector.normalize())
-				continue;
+		//	if (!prevVector.normalize())
+		//		continue;
+		//	if (!nextVector.normalize())
+		//		continue;
 
-			crossProd = prevVector.x*nextVector.y - prevVector.y*nextVector.x;
-			dotProd = prevVector.x * nextVector.x + prevVector.y * nextVector.y;
-			if (crossProd > tolerance)
-			{
-				crossProd = 1.0;
-			}
-			else if (crossProd < -tolerance)
-			{
-				crossProd = -1.0;
-			}
-			else
-				continue;
+		//	crossProd = prevVector.x*nextVector.y - prevVector.y*nextVector.x;
+		//	dotProd = prevVector.x * nextVector.x + prevVector.y * nextVector.y;
+		//	if (crossProd > tolerance)
+		//	{
+		//		crossProd = 1.0;
+		//	}
+		//	else if (crossProd < -tolerance)
+		//	{
+		//		crossProd = -1.0;
+		//	}
+		//	else
+		//		continue;
 
-			if (dotProd > 1.0)
-				dotProd = 1.0;
+		//	if (dotProd > 1.0)
+		//		dotProd = 1.0;
 
-			if (dotProd < -1.0)
-				dotProd = -1.0;
+		//	if (dotProd < -1.0)
+		//		dotProd = -1.0;
 
-			angle = acos(dotProd);
+		//	angle = acos(dotProd);
 
-			lfNormal += (crossProd * angle);
-		}
+		//	lfNormal += (crossProd * angle);
+		//}
 
-		if(lfNormal < 3.0 && lfNormal > -3.0)
-			return false;
+		//if(lfNormal < 3.0 && lfNormal > -3.0)
+		//	return false;
 
 		// 5. put the result into container
 		mergedOuterRing.clear();
