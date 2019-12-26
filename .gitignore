@@ -36,6 +36,7 @@ UpgradeLog.htm
 !/external/glew-2.0.0
 Win32
 SetupHMDConverter
+/.vs
 
 
 # Executables

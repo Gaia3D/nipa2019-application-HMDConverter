@@ -80,13 +80,104 @@ public:
 
 		surfaces.clear();
 
-		for (size_t i = 0; vertexList.size(); i++)
+		for (size_t i = 0; i < vertexList.size(); i++)
 		{
 			delete vertexList[i];
 		}
 
 		vertexIndices.clear();
 		vertexList.clear();
+	}
+
+	bool operator==(const RevPrim& other)
+	{
+		if (primType != TYPE4 && primType != TYPE8 && primType != TYPE11)
+			return false;
+
+		if (primType != other.primType)
+			return false;
+
+		if (primType == TYPE4 || primType == TYPE8)
+		{
+			if (vertexList.size() != other.vertexList.size())
+				return false;
+
+			if (vertexIndices.size() != other.vertexIndices.size())
+				return false;
+
+			if (fabs(vertexList[0]->position.x - other.vertexList[0]->position.x) > 1E-7)
+				return false;
+
+			if (fabs(vertexList[0]->position.y - other.vertexList[0]->position.y) > 1E-7)
+				return false;
+
+			if (fabs(vertexList[0]->position.z - other.vertexList[0]->position.z) > 1E-7)
+				return false;
+
+			if (fabs(vertexList[1]->position.x - other.vertexList[1]->position.x) > 1E-7)
+				return false;
+
+			if (fabs(vertexList[1]->position.y - other.vertexList[1]->position.y) > 1E-7)
+				return false;
+
+			if (fabs(vertexList[1]->position.z - other.vertexList[1]->position.z) > 1E-7)
+				return false;
+
+			if (fabs(vertexList[2]->position.x - other.vertexList[2]->position.x) > 1E-7)
+				return false;
+
+			if (fabs(vertexList[2]->position.y - other.vertexList[2]->position.y) > 1E-7)
+				return false;
+
+			if (fabs(vertexList[2]->position.z - other.vertexList[2]->position.z) > 1E-7)
+				return false;
+		}
+		else
+		{
+			if (surfaces.size() != other.surfaces.size())
+				return false;
+
+			for (size_t i = 0; i < surfaces.size(); i++)
+			{
+				if (surfaces[i]->subSurfaces.size() != other.surfaces[i]->subSurfaces.size())
+					return false;
+
+				for (size_t j = 0; j < surfaces[i]->subSurfaces.size(); j++)
+				{
+					if (surfaces[i]->subSurfaces[j]->vertices.size() != other.surfaces[i]->subSurfaces[j]->vertices.size())
+						return false;
+				}
+			}
+
+			if (fabs(surfaces[0]->subSurfaces[0]->vertices[0]->position.x - other.surfaces[0]->subSurfaces[0]->vertices[0]->position.x) > 1E-7)
+				return false;
+
+			if (fabs(surfaces[0]->subSurfaces[0]->vertices[0]->position.y - other.surfaces[0]->subSurfaces[0]->vertices[0]->position.y) > 1E-7)
+				return false;
+
+			if (fabs(surfaces[0]->subSurfaces[0]->vertices[0]->position.z - other.surfaces[0]->subSurfaces[0]->vertices[0]->position.z) > 1E-7)
+				return false;
+
+			if (fabs(surfaces[0]->subSurfaces[0]->vertices[1]->position.x - other.surfaces[0]->subSurfaces[0]->vertices[1]->position.x) > 1E-7)
+				return false;
+
+			if (fabs(surfaces[0]->subSurfaces[0]->vertices[1]->position.y - other.surfaces[0]->subSurfaces[0]->vertices[1]->position.y) > 1E-7)
+				return false;
+
+			if (fabs(surfaces[0]->subSurfaces[0]->vertices[1]->position.z - other.surfaces[0]->subSurfaces[0]->vertices[1]->position.z) > 1E-7)
+				return false;
+
+			if (fabs(surfaces[0]->subSurfaces[0]->vertices[2]->position.x - other.surfaces[0]->subSurfaces[0]->vertices[2]->position.x) > 1E-7)
+				return false;
+
+			if (fabs(surfaces[0]->subSurfaces[0]->vertices[2]->position.y - other.surfaces[0]->subSurfaces[0]->vertices[2]->position.y) > 1E-7)
+				return false;
+
+			if (fabs(surfaces[0]->subSurfaces[0]->vertices[2]->position.z - other.surfaces[0]->subSurfaces[0]->vertices[2]->position.z) > 1E-7)
+				return false;
+		}
+
+		return true;
 	}
 
 	enum PRIM_TYPE {NONE, UNKNOWN, BROKEN, TYPE1, TYPE2, TYPE3, TYPE4, TYPE5, TYPE6, TYPE7, TYPE8, TYPE9, TYPE10, TYPE11};
@@ -205,130 +296,208 @@ void readALine(char buffer[], FILE*&file)
 
 #ifdef TEMPORARY_TEST
 #include "../util/json/json.h"
-void extractHiararchy(RevNode* node, Json::Value& container)
+//void extractHiararchy(RevNode* node, Json::Value& container)
+//{
+//	if (!container.isArray())
+//	{
+//		printf("[ERROR] Wrong Json Value Type\n");
+//		return;
+//	}
+//
+//	Json::Value jsonNode(Json::objectValue);
+//	
+//	jsonNode["1:id"] = node->id;
+//
+//	bool bHasGeom = false;
+//	for (size_t i = 0; i < node->prims.size(); i++)
+//	{
+//		if (node->prims[i]->primType == RevPrim::TYPE11)
+//		{
+//			bHasGeom = true;
+//			break;
+//		}
+//	}
+//	jsonNode["2:hasGeometry"] = bHasGeom;
+//
+//	if (!node->children.empty())
+//	{
+//		jsonNode["3:children"] = Json::Value(Json::arrayValue);
+//		for (size_t i = 0; i < node->children.size(); i++)
+//		{
+//			extractHiararchy(node->children[i], jsonNode["3:children"]);
+//		}
+//	}
+//
+//	container.append(jsonNode);
+//}
+//
+//void dumpHiararchy(std::vector<RevNode*>& nodes, std::string filePath)
+//{
+//	Json::Value roots(Json::arrayValue);
+//	for (size_t i = 0; i < nodes.size(); i++)
+//		extractHiararchy(nodes[i], roots);
+//
+//	Json::StyledWriter writer;
+//	std::string result = writer.write(roots);
+//
+//	FILE* file = NULL;
+//	file = fopen(filePath.c_str(), "wt");
+//	fprintf(file, "%s", result.c_str());
+//	fclose(file);
+//}
+//
+//void extractObjectIdPatternFromNode(RevNode* node, Json::Value& container)
+//{
+//	if (!container.isArray())
+//	{
+//		printf("[ERROR] Wrong Json Value Type\n");
+//		return;
+//	}
+//
+//	if (!node->children.empty())
+//	{
+//		for (size_t i = 0; i < node->children.size(); i++)
+//		{
+//			extractObjectIdPatternFromNode(node->children[i], container);
+//		}
+//	}
+//
+//	bool bHasGeom = false;
+//	for (size_t i = 0; i < node->prims.size(); i++)
+//	{
+//		if (node->prims[i]->primType == RevPrim::TYPE11)
+//		{
+//			bHasGeom = true;
+//			break;
+//		}
+//	}
+//
+//	if (!bHasGeom)
+//		return;
+//
+//	std::string nodeId = node->id;
+//
+//	char idBuffer[LineLengthMax];
+//	memset(idBuffer, 0x00, sizeof(char) * LineLengthMax);
+//	memcpy(idBuffer, nodeId.c_str(), sizeof(char)*nodeId.size());
+//	char* word = strtok(idBuffer, " \t\n");
+//	std::string nodeIdPattern(word);
+//
+//	if (nodeIdPattern.find(std::string("/")) == 0)
+//		nodeIdPattern = nodeIdPattern.substr(1, nodeIdPattern.size() - 1);
+//
+//	bool bAlreadyExist = false;
+//	for (unsigned int i = 0; i < container.size(); i++)
+//	{
+//		if ( (container[i])["idPattern"].asString() == nodeIdPattern)
+//		{
+//			bAlreadyExist = true;
+//			break;
+//		}
+//	}
+//
+//	if (bAlreadyExist)
+//		return;
+//
+//	Json::Value jsonNode(Json::objectValue);
+//	jsonNode["idPattern"] = nodeIdPattern;
+//	container.append(jsonNode);
+//}
+//
+//static Json::Value objectPatterns(Json::arrayValue);
+//void extractObjectIdPattern(std::vector<RevNode*>& nodes)
+//{
+//	for (size_t i = 0; i < nodes.size(); i++)
+//		extractObjectIdPatternFromNode(nodes[i], objectPatterns);
+//}
+//
+//void writeObjectPatterns(std::string fileFullPath)
+//{
+//	Json::StyledWriter writer;
+//	std::string result = writer.write(objectPatterns);
+//
+//	FILE* file = NULL;
+//	file = fopen(fileFullPath.c_str(), "wt");
+//	fprintf(file, "%s", result.c_str());
+//	fclose(file);
+//}
+
+static size_t totalMeshCount = 0, totalDuplicationCaseCount = 0;
+static std::vector<RevPrim*> totalMeshes;
+
+void extractGeometricDuplication(RevNode* node)
 {
-	if (!container.isArray())
-	{
-		printf("[ERROR] Wrong Json Value Type\n");
-		return;
-	}
-
-	Json::Value jsonNode(Json::objectValue);
-	
-	jsonNode["1:id"] = node->id;
-
-	bool bHasGeom = false;
 	for (size_t i = 0; i < node->prims.size(); i++)
 	{
-		if (node->prims[i]->primType == RevPrim::TYPE11)
-		{
-			bHasGeom = true;
-			break;
-		}
-	}
-	jsonNode["2:hasGeometry"] = bHasGeom;
+		if (node->prims[i]->primType != RevPrim::PRIM_TYPE::TYPE4 &&
+			node->prims[i]->primType != RevPrim::PRIM_TYPE::TYPE8 &&
+			node->prims[i]->primType != RevPrim::PRIM_TYPE::TYPE11)
+			continue;
 
-	if (!node->children.empty())
-	{
-		jsonNode["3:children"] = Json::Value(Json::arrayValue);
-		for (size_t i = 0; i < node->children.size(); i++)
+		totalMeshCount++;
+
+		bool bDuplicated = false;
+		for (size_t j = 0; j < totalMeshes.size(); j++)
 		{
-			extractHiararchy(node->children[i], jsonNode["3:children"]);
+			if (totalMeshes[j] == node->prims[i])
+			{
+				bDuplicated = true;
+				totalDuplicationCaseCount++;
+				break;
+			}
 		}
+
+		if (!bDuplicated)
+			totalMeshes.push_back(node->prims[i]);
 	}
 
-	container.append(jsonNode);
+	for (size_t i = 0; i < node->children.size(); i++)
+		extractGeometricDuplication(node->children[i]);
 }
 
-void dumpHiararchy(std::vector<RevNode*>& nodes, std::string filePath)
+size_t totalIdCount = 0, totalIdDuplicationCount = 0;
+std::vector<std::string> totalIds;
+void extractIdDuplication(RevNode* node)
 {
-	Json::Value roots(Json::arrayValue);
-	for (size_t i = 0; i < nodes.size(); i++)
-		extractHiararchy(nodes[i], roots);
-
-	Json::StyledWriter writer;
-	std::string result = writer.write(roots);
-
-	FILE* file = NULL;
-	file = fopen(filePath.c_str(), "wt");
-	fprintf(file, "%s", result.c_str());
-	fclose(file);
-}
-
-void extractObjectIdPatternFromNode(RevNode* node, Json::Value& container)
-{
-	if (!container.isArray())
+	totalIdCount++;
+	bool bDuplicated = false;
+	for (size_t i = 0; i < totalIds.size(); i++)
 	{
-		printf("[ERROR] Wrong Json Value Type\n");
-		return;
-	}
-
-	if (!node->children.empty())
-	{
-		for (size_t i = 0; i < node->children.size(); i++)
+		if (totalIds[i] == node->id)
 		{
-			extractObjectIdPatternFromNode(node->children[i], container);
-		}
-	}
-
-	bool bHasGeom = false;
-	for (size_t i = 0; i < node->prims.size(); i++)
-	{
-		if (node->prims[i]->primType == RevPrim::TYPE11)
-		{
-			bHasGeom = true;
+			bDuplicated = true;
+			totalIdDuplicationCount++;
 			break;
 		}
 	}
 
-	if (!bHasGeom)
-		return;
+	if (!bDuplicated)
+		totalIds.push_back(node->id);
 
-	std::string nodeId = node->id;
-
-	char idBuffer[LineLengthMax];
-	memset(idBuffer, 0x00, sizeof(char) * LineLengthMax);
-	memcpy(idBuffer, nodeId.c_str(), sizeof(char)*nodeId.size());
-	char* word = strtok(idBuffer, " \t\n");
-	std::string nodeIdPattern(word);
-
-	if (nodeIdPattern.find(std::string("/")) == 0)
-		nodeIdPattern = nodeIdPattern.substr(1, nodeIdPattern.size() - 1);
-
-	bool bAlreadyExist = false;
-	for (unsigned int i = 0; i < container.size(); i++)
-	{
-		if ( (container[i])["idPattern"].asString() == nodeIdPattern)
-		{
-			bAlreadyExist = true;
-			break;
-		}
-	}
-
-	if (bAlreadyExist)
-		return;
-
-	Json::Value jsonNode(Json::objectValue);
-	jsonNode["idPattern"] = nodeIdPattern;
-	container.append(jsonNode);
+	for (size_t i = 0; i < node->children.size(); i++)
+		extractIdDuplication(node->children[i]);
 }
 
-static Json::Value objectPatterns(Json::arrayValue);
-void extractObjectIdPattern(std::vector<RevNode*>& nodes)
+void checkDuplication(std::vector<RevNode*>& nodes)
 {
 	for (size_t i = 0; i < nodes.size(); i++)
-		extractObjectIdPatternFromNode(nodes[i], objectPatterns);
+	{
+		extractGeometricDuplication(nodes[i]);
+		extractIdDuplication(nodes[i]);
+	}
 }
 
-void writeObjectPatterns(std::string fileFullPath)
+void writeCheckResult(std::string fileFullPath)
 {
-	Json::StyledWriter writer;
-	std::string result = writer.write(objectPatterns);
-
 	FILE* file = NULL;
 	file = fopen(fileFullPath.c_str(), "wt");
-	fprintf(file, "%s", result.c_str());
+	fprintf(file, "total mesh count : %zd\n", totalMeshCount);
+	fprintf(file, "geometric duplication case count : %zd\n", totalDuplicationCaseCount);
+	fprintf(file, "total id count : %zd\n", totalIdCount);
+	fprintf(file, "id duplication case count : %zd\n", totalIdDuplicationCount);
 	fclose(file);
+
+	totalMeshes.clear();
 }
 #endif
 
@@ -430,10 +599,6 @@ bool AvevaRevReader::readRawDataFile(std::string& filePath)
 	}
 	fclose(file);
 
-#ifdef TEMPORARY_TEST
-	extractObjectIdPattern(createdRootNodes);
-#endif
-
 	if(!splitFilter.empty())
 		bBuildHiararchy = true;
 
@@ -457,6 +622,19 @@ bool AvevaRevReader::readRawDataFile(std::string& filePath)
 
 		return true;
 	}
+
+#ifdef TEMPORARY_TEST
+	checkDuplication(createdRootNodes);
+
+	for (size_t i = 0; i < createdRootNodes.size(); i++)
+	{
+		createdRootNodes[i]->clear();
+		delete createdRootNodes[i];
+		createdRootNodes[i] = NULL;
+	}
+
+	return false;
+#endif
 
 	for (size_t i = 0; i < createdRootNodes.size(); i++)
 	{
@@ -1064,6 +1242,7 @@ bool readPrimInfo(FILE* file, RevNode* node)
 						delete vertex;
 						return false;
 					}
+
 					vertex->position.set(tokenizedNumbers[0], tokenizedNumbers[1], tokenizedNumbers[2]);
 					tokenizedNumbers.clear();
 					vertex->position = transMat * (vertex->position);
@@ -1526,11 +1705,11 @@ void extractGeometryInformation(RevNode* node,
 			polyhedron->addStringAttribute(std::string(ObjectGuid), node->id);
 			polyhedron->setHasNormals(true);
 			polyhedron->setColorMode(gaia3d::ColorMode::SingleColor);
-			if (prim->primType == RevPrim::PRIM_TYPE::TYPE8)
-				polyhedron->setSingleColor(MakeColorU4(255, 0, 0));
-			else if(prim->primType == RevPrim::PRIM_TYPE::TYPE4)
-				polyhedron->setSingleColor(MakeColorU4(0, 0, 255));
-			else
+			//if (prim->primType == RevPrim::PRIM_TYPE::TYPE8)
+			//	polyhedron->setSingleColor(MakeColorU4(255, 0, 0));
+			//else if(prim->primType == RevPrim::PRIM_TYPE::TYPE4)
+			//	polyhedron->setSingleColor(MakeColorU4(0, 0, 255));
+			//else
 				polyhedron->setSingleColor(node->color);
 
 			container.push_back(polyhedron);

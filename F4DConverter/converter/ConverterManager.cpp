@@ -268,6 +268,10 @@ bool CConverterManager::writeIndexFile()
 	return true;
 }
 
+#ifdef TEMPORARY_TEST
+void writeCheckResult(std::string fileFullPath);
+#endif
+
 void CConverterManager::processSingleLoop(std::map<std::string, std::string>& targetFiles,
 										std::map<std::string, double>& centerXs,
 										std::map<std::string, double>& centerYs,
@@ -572,6 +576,11 @@ void CConverterManager::processSingleLoop(std::map<std::string, std::string>& ta
 
 		printf("===== End processing this file : %s\n", dataFile.c_str());
 	}
+
+#ifdef TEMPORARY_TEST
+	std::string duplicationCheckResult = outputFolder + std::string("/") + projectName + std::string("_duplicationCheckResult.txt");
+	writeCheckResult(duplicationCheckResult);
+#endif
 
 	std::string logFileFullPath = outputFolder + std::string("/resultLog.csv");
 	FILE* logFile = NULL;

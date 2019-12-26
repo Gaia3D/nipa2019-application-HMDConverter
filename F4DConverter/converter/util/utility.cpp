@@ -488,7 +488,7 @@ namespace gaia3d
 		size_t prevIndex, nextIndex;
 		gaia3d::Point3D prevVector, nextVector;
 		double lfNormal = 0.0;
-		double tolerance = 1E-7;
+		double tolerance = 1E-6;
 		for (size_t i = 0; i < count; i++)
 		{
 			prevIndex = (i == 0) ? count - 1 : i - 1;
@@ -528,7 +528,7 @@ namespace gaia3d
 			lfNormal += (crossProd * angle);
 		}
 
-		normal = (lfNormal > 3.0) ? 1 :((lfNormal < -3.0 ) ? -1 : 0);
+		normal = (lfNormal > tolerance) ? 1 :((lfNormal < -tolerance) ? -1 : 0);
 	}
 
 	bool intersectionTestOnTwoLineSegments( double x1Start, double y1Start, double x1End, double y1End,
@@ -579,29 +579,6 @@ namespace gaia3d
 		size_t concavePointIndexOnAllPoints = concavePointIndicesOnAllPoints[0];
 		size_t concavePointIndexOnThisPolygon = concavePointIndicesOnThisPolygon[0];
 
-		/*size_t concavePointIndexOnAllPoints;
-		size_t concavePointIndexOnThisPolygon;
-		for (size_t i = 0; i < concavePointIndicesOnAllPoints.size(); i++)
-		{
-			concavePointIndexOnAllPoints = concavePointIndicesOnAllPoints[i];
-			size_t appearingTimes = 0;
-			for (size_t j = 0; j < polygonVertexIndices.size(); j++)
-			{
-				if (concavePointIndexOnAllPoints == polygonVertexIndices[j])
-				{
-					appearingTimes++;
-					if (appearingTimes > 1)
-						break;
-				}
-			}
-
-			if (appearingTimes == 1)
-			{
-				concavePointIndexOnThisPolygon = concavePointIndicesOnThisPolygon[i];
-				break;
-			}
-		}*/
-
 		size_t polygonPointCount = polygonVertexIndices.size();
 		gaia3d::Point3D concavePoint;
 		concavePoint.set(pxs[concavePointIndexOnAllPoints], pys[concavePointIndexOnAllPoints], 0.0);
@@ -621,43 +598,12 @@ namespace gaia3d
 				polygonVertexIndices[i] == polygonVertexIndices[nextIndexOfConcavePointOnThisPolygon])
 				continue;
 
-			/*bool bAppearMultiply = false;
-			for (size_t j = 0; j < polygonPointCount; j++)
-			{
-				if (j == i)
-					continue;
-
-				if (polygonVertexIndices[i] == polygonVertexIndices[j])
-				{
-					bAppearMultiply = true;
-					break;
-				}
-			}
-
-			if (bAppearMultiply)
-				continue;*/
-
 			targetPoint.set(pxs[polygonVertexIndices[i]], pys[polygonVertexIndices[i]], 0.0);
 			squaredDist = targetPoint.squaredDistanceTo(concavePoint);
 			if (sortedPointIndicesOnAllPointsMap.find(squaredDist) == sortedPointIndicesOnAllPointsMap.end())
 			{
 				sortedPointIndicesOnAllPointsMap[squaredDist] = std::vector<size_t>();
 				sortedPointIndicesOnThisPolygonMap[squaredDist] = std::vector<size_t>();
-			}
-			else
-			{
-				bool bDuplicated = false;
-				for (size_t j = 0; j < sortedPointIndicesOnAllPointsMap[squaredDist].size(); j++)
-				{
-					if ( (sortedPointIndicesOnAllPointsMap[squaredDist])[j] == polygonVertexIndices[i] )
-					{
-						bDuplicated = true;
-						break;
-					}
-				}
-
-				if (bDuplicated)
-					continue;
 			}
 
 			sortedPointIndicesOnAllPointsMap[squaredDist].push_back(polygonVertexIndices[i]);
@@ -1233,7 +1179,7 @@ namespace gaia3d
 		//	lfNormal += (crossProd * angle);
 		//}
 
-		//if(lfNormal < 3.0 && lfNormal > -3.0)
+		//if(lfNormal < 1E-6 && lfNormal > -1E-6)
 		//	return false;
 
 		// 5. put the result into container
